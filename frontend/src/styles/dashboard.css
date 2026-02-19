@@ -58,7 +58,7 @@
 }
 
 /* Cards look more premium */
-.card {
+.dashboard .card {
   background: rgba(255,255,255,0.03);
   border: 1px solid rgba(255,255,255,0.06);
   border-radius: 16px;
@@ -69,4 +69,73 @@
 @media (max-width: 1100px) {
   .kpiGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .chartsGrid { grid-template-columns: 1fr; }
+}
+
+.chartCanvas{
+  height: 190px;   /* donut + bar inside card */
+  width: 100%;
+}
+
+.chartCard{
+  height: 280px;  /* stable */
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  padding: 14px;
+}
+.kpiCard{
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 12px 14px;
+  min-height: 72px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+}
+
+.kpiTitle{
+  font-size: 13px;
+  color: #94a3b8;
+  margin-bottom: 6px;
+}
+
+.kpiValue{
+  font-size: 22px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.chartsGrid3{
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap:16px;
+}
+
+@media (max-width: 1100px){
+  .chartsGrid3{ grid-template-columns: 1fr; }
+}
+
+.tasksHeader{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  margin-bottom:14px;
+  gap:16px;
+}
+
+.taskFiltersInline{
+  display:flex;
+  gap:18px;
+  align-items:center;
+  flex-wrap:wrap;
+}
+
+.taskFiltersInline label{
+  display:flex;
+  gap:8px;
+  align-items:center;
+  white-space:nowrap;
+  font-size:14px;
+  opacity:0.9;
 }

@@ -8,6 +8,7 @@ export type Task = {
   description: string;
   status: TaskStatus;
   owner_id: string;
+  owner_email: string ; // for convenience in frontend
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -15,6 +16,8 @@ export type Task = {
   can_edit_status: boolean;
   can_edit_content: boolean;
   can_delete: boolean;
+
+  attachments?: TaskAttachment[];
 };
 
 type ApiResp<T> = { success: boolean; message: string; data?: T; errors?: any };
@@ -56,4 +59,20 @@ export async function updateTask(
 export async function deleteTask(taskId: string) {
   const res = await api.delete<ApiResp<{}>>(`/api/tasks/${taskId}`);
   return res.data;
+}
+
+export type TaskAttachment = {
+  id: string;
+  original_name: string;
+  size_bytes: number;
+  content_type: string;
+  download_url: string;   // "/api/attachments/<id>/download"
+  created_at: string;
+};
+
+export async function downloadAttachment(attachmentId: string) {
+  const res = await api.get(`/api/attachments/${attachmentId}/download`, {
+    responseType: "blob",
+  });
+  return res.data as Blob;
 }

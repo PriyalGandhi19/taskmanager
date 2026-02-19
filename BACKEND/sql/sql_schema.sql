@@ -606,3 +606,60 @@ CREATE TABLE refresh_tokens (
 
 CREATE INDEX idx_refresh_user ON refresh_tokens(user_id);
 CREATE INDEX idx_refresh_expires ON refresh_tokens(expires_at);
+
+-- =========================
+-- TASK ATTACHMENTS
+-- =========================
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  task_id       UUID NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  original_name TEXT NOT NULL,
+  storage_name  TEXT NOT NULL,         -- filename on disk (unique)
+  content_type  TEXT NOT NULL DEFAULT 'application/pdf',
+  size_bytes    BIGINT NOT NULL DEFAULT 0,
+  uploaded_by   UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_attachments_task_id ON task_attachments(task_id);
+
+CREATE OR REPLACE FUNCTION fn_create_task(
+  p_actor_id UUID,
+  p_title TEXT,
+  p_description TEXT,
+  p_status TEXT,
+  p_owner_id UUID
+)
+RETURNS UUID
+LANGUAGE plpgsql
+AS $$
+DECLARE actor_role TEXT;
+DECLARE final_owner UUID;
+DECLARE new_task_id UUID;
+BEGIN
+  actor_role := fn_user_role(p_actor_id);
+
+  IF actor_role IS NULL THEN
+    RAISE EXCEPTION 'Invalid actor';
+  END IF;
+
+  IF p_status NOT IN ('PENDING', 'IN_PROGRESS', 'COMPLETED') THEN
+    RAISE EXCEPTION 'Invalid status';
+  END IF;
+
+  IF actor_role = 'ADMIN' THEN
+    IF p_owner_id IS NULL THEN
+      RAISE EXCEPTION 'owner_id is required for ADMIN';
+    END IF;
+    final_owner := p_owner_id;
+  ELSE
+    final_owner := p_actor_id;
+  END IF;
+
+  INSERT INTO tasks(title, description, status, owner_id, created_by)
+  VALUES (TRIM(p_title), COALESCE(p_description, ''), p_status, final_owner, p_actor_id)
+  RETURNING id INTO new_task_id;
+
+  RETURN new_task_id;
+END;
+$$;

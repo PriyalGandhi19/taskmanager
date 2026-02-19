@@ -1,8 +1,16 @@
+// src/pages/UserDashboard.tsx
+
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
 import StatusChips from "../components/StatusChips";
-import { createTask, deleteTask, getTasks, updateTask } from "../api/tasks";
+import {
+  createTask,
+  deleteTask,
+  getTasks,
+  updateTask,
+  downloadAttachment,
+} from "../api/tasks";
 import type { Task, TaskStatus } from "../api/tasks";
 
 export default function UserDashboard() {
@@ -11,7 +19,11 @@ export default function UserDashboard() {
   const [err, setErr] = useState("");
 
   const [openTask, setOpenTask] = useState(false);
-  const [taskForm, setTaskForm] = useState({ title: "", description: "", status: "PENDING" as TaskStatus });
+  const [taskForm, setTaskForm] = useState({
+    title: "",
+    description: "",
+    status: "PENDING" as TaskStatus,
+  });
 
   // optional pdf (create only)
   const [taskPdf, setTaskPdf] = useState<File | null>(null);
@@ -19,11 +31,22 @@ export default function UserDashboard() {
   // EDIT modal
   const [openEdit, setOpenEdit] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
-  const [editForm, setEditForm] = useState({ title: "", description: "", status: "PENDING" as TaskStatus });
+  const [editForm, setEditForm] = useState({
+    title: "",
+    description: "",
+    status: "PENDING" as TaskStatus,
+  });
 
   // Filters
-  const [filter, setFilter] = useState({ PENDING: true, IN_PROGRESS: true, COMPLETED: true });
-  const filteredTasks = useMemo(() => tasks.filter((t) => filter[t.status]), [tasks, filter]);
+  const [filter, setFilter] = useState({
+    PENDING: true,
+    IN_PROGRESS: true,
+    COMPLETED: true,
+  });
+  const filteredTasks = useMemo(
+    () => tasks.filter((t) => filter[t.status]),
+    [tasks, filter]
+  );
 
   const load = async () => {
     setErr("");
@@ -41,6 +64,26 @@ export default function UserDashboard() {
   useEffect(() => {
     load();
   }, []);
+
+  // =========================
+  // ATTACHMENT DOWNLOAD
+  // =========================
+  const handleDownload = async (attId: string, filename: string) => {
+    try {
+      const blob = await downloadAttachment(attId);
+
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "file.pdf";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || "Download failed");
+    }
+  };
 
   const submitCreateTask = async () => {
     setErr("");
@@ -70,7 +113,11 @@ export default function UserDashboard() {
       return;
     }
     try {
-      await updateTask(task.id, { title: task.title, description: task.description, status });
+      await updateTask(task.id, {
+        title: task.title,
+        description: task.description,
+        status,
+      });
       await load();
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Update failed");
@@ -104,10 +151,13 @@ export default function UserDashboard() {
     if (!editTask) return;
 
     // Rule 1: if cannot edit content, only status change should be allowed
-    const finalPayload =
-      editTask.can_edit_content
-        ? { ...editForm }
-        : { title: editTask.title, description: editTask.description, status: editForm.status };
+    const finalPayload = editTask.can_edit_content
+      ? { ...editForm }
+      : {
+          title: editTask.title,
+          description: editTask.description,
+          status: editForm.status,
+        };
 
     try {
       await updateTask(editTask.id, finalPayload);
@@ -140,12 +190,18 @@ export default function UserDashboard() {
         <div className="card">
           <h3>Task Filters</h3>
           <div className="status-row">
-            {(["PENDING", "IN_PROGRESS", "COMPLETED"] as TaskStatus[]).map((s) => (
-              <label className="status-item" key={s}>
-                <input type="checkbox" checked={filter[s]} onChange={() => setFilter((p) => ({ ...p, [s]: !p[s] }))} />
-                {s.replace("_", " ")}
-              </label>
-            ))}
+            {(["PENDING", "IN_PROGRESS", "COMPLETED"] as TaskStatus[]).map(
+              (s) => (
+                <label className="status-item" key={s}>
+                  <input
+                    type="checkbox"
+                    checked={filter[s]}
+                    onChange={() => setFilter((p) => ({ ...p, [s]: !p[s] }))}
+                  />
+                  {s.replace("_", " ")}
+                </label>
+              )
+            )}
           </div>
         </div>
 
@@ -164,15 +220,38 @@ export default function UserDashboard() {
                   <div className="muted small">{t.description}</div>
 
                   {!t.can_edit_content && (
-                    <div className="muted small">🔒 Title/description locked (Admin created)</div>
+                    <div className="muted small">
+                      🔒 Title/description locked (Admin created)
+                    </div>
                   )}
+
+                  {/* ✅ ATTACHMENTS */}
+                  {t.attachments?.length ? (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontWeight: 600 }}>Attachments</div>
+                      {t.attachments.map((a) => (
+                        <div
+                          key={a.id}
+                          style={{ display: "flex", gap: 10, marginTop: 4 }}
+                        >
+                          <span className="muted small">{a.original_name}</span>
+                          <button
+                            className="btn"
+                            onClick={() => handleDownload(a.id, a.original_name)}
+                          >
+                            Download
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div>
                   <StatusChips
                     value={t.status}
                     onChange={(s) => quickStatus(t, s)}
-                    disabled={!t.can_edit_status} // ✅ THIS is why earlier you could not change!
+                    disabled={!t.can_edit_status}
                   />
                 </div>
 
@@ -181,32 +260,59 @@ export default function UserDashboard() {
                     Edit
                   </button>
 
-                  <button className="btn danger" onClick={() => removeTask(t)} disabled={!t.can_delete}>
+                  <button
+                    className="btn danger"
+                    onClick={() => removeTask(t)}
+                    disabled={!t.can_delete}
+                  >
                     Delete
                   </button>
                 </div>
               </div>
             ))}
 
-            {!loading && filteredTasks.length === 0 && <div className="muted">No tasks for selected filters.</div>}
+            {!loading && filteredTasks.length === 0 && (
+              <div className="muted">No tasks for selected filters.</div>
+            )}
           </div>
         </div>
       </div>
 
       {/* CREATE MODAL */}
-      <Modal open={openTask} title="Create Task" onClose={() => setOpenTask(false)}>
+      <Modal
+        open={openTask}
+        title="Create Task"
+        onClose={() => setOpenTask(false)}
+      >
         <div className="form">
           <label>Title</label>
-          <input value={taskForm.title} onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))} />
+          <input
+            value={taskForm.title}
+            onChange={(e) =>
+              setTaskForm((p) => ({ ...p, title: e.target.value }))
+            }
+          />
 
           <label>Description</label>
-          <textarea value={taskForm.description} onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))} />
+          <textarea
+            value={taskForm.description}
+            onChange={(e) =>
+              setTaskForm((p) => ({ ...p, description: e.target.value }))
+            }
+          />
 
           <label>Status</label>
-          <StatusChips value={taskForm.status} onChange={(s) => setTaskForm((p) => ({ ...p, status: s }))} />
+          <StatusChips
+            value={taskForm.status}
+            onChange={(s) => setTaskForm((p) => ({ ...p, status: s }))}
+          />
 
           <label>Optional PDF</label>
-          <input type="file" accept="application/pdf" onChange={(e) => setTaskPdf(e.target.files?.[0] || null)} />
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setTaskPdf(e.target.files?.[0] || null)}
+          />
           {taskPdf && <div className="muted small">Selected: {taskPdf.name}</div>}
 
           <button className="btn primary" onClick={submitCreateTask}>
@@ -216,20 +322,28 @@ export default function UserDashboard() {
       </Modal>
 
       {/* EDIT MODAL */}
-      <Modal open={openEdit} title="Edit Task" onClose={() => setOpenEdit(false)}>
+      <Modal
+        open={openEdit}
+        title="Edit Task"
+        onClose={() => setOpenEdit(false)}
+      >
         <div className="form">
           <label>Title</label>
           <input
             value={editForm.title}
             disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
+            onChange={(e) =>
+              setEditForm((p) => ({ ...p, title: e.target.value }))
+            }
           />
 
           <label>Description</label>
           <textarea
             value={editForm.description}
             disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+            onChange={(e) =>
+              setEditForm((p) => ({ ...p, description: e.target.value }))
+            }
           />
 
           <label>Status</label>

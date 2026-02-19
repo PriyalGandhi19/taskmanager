@@ -55,13 +55,13 @@ a:hover {
 
 .input-ok { border-color: #22c55e !important; }
 .input-bad { border-color: #ef4444 !important; }
-
+/* 
 .card {
   background: #0f172a;
   border-radius: 12px;
   padding: 16px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.3);
-}
+} */
 
 /* AUDIT HEADER */
 .auditHeader{
@@ -169,4 +169,14 @@ a:hover {
   .auditKVs{
     grid-template-columns: 1fr;
   }
+}
+
+.ownerBadge{
+  display:inline-block;
+  padding:2px 10px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04);
+  margin-left:6px;
+  font-size:12px;
 }
