@@ -1,0 +1,22 @@
+# Python
+**/__pycache__/
+**/*.pyc
+
+# Django media
+BACKEND/media/
+
+# Env files
+.env
+BACKEND/.env
+frontend/.env
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+**/__pycache__/
+**/*.pyc
+.env
+BACKEND/.env
+frontend/.env

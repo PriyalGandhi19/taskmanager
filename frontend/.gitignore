@@ -26,3 +26,28 @@ dist-ssr
 # Django media files
 BACKEND/media/
 
+
+
+**/__pycache__/
+**/*.pyc
+
+BACKEND/.env
+.env
+frontend/.env
+
+# Python
+**/__pycache__/
+**/*.pyc
+
+# Django media
+BACKEND/media/
+
+# Env files
+.env
+BACKEND/.env
+frontend/.env
+
+# Node
+node_modules/
+dist/
+dist-ssr/
