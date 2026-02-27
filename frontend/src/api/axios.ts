@@ -1,5 +1,7 @@
+// src/api/axios.ts
 import axios, { AxiosError } from "axios";
 import { refreshApi } from "./auth";
+import { authStorage } from "../store/authStorage";
 
 const baseURL = import.meta.env.VITE_API_BASE_URL;
 
@@ -9,57 +11,33 @@ export const api = axios.create({
 });
 
 /* ============================
-   TOKEN HELPERS
-============================ */
-
-function getAccess() {
-  return localStorage.getItem("tm_access");
-}
-
-function getRefresh() {
-  return localStorage.getItem("tm_refresh");
-}
-
-function setAccess(access: string) {
-  localStorage.setItem("tm_access", access);
-}
-
-function clearAll() {
-  localStorage.removeItem("tm_access");
-  localStorage.removeItem("tm_refresh");
-  localStorage.removeItem("tm_user");
-}
-
-/* ============================
    ATTACH ACCESS TOKEN
 ============================ */
-
 api.interceptors.request.use((config) => {
-  const token = getAccess();
+  const token = authStorage.getAccess();
   if (token) {
+    config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
 /* ============================
-   REFRESH CONTROL VARIABLES
+   REFRESH CONTROL
 ============================ */
-
 let isRefreshing = false;
 let pendingRequests: Array<(token: string | null) => void> = [];
-let lastRefreshAt = 0;
 
 /* ============================
    RESPONSE INTERCEPTOR
 ============================ */
-
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<any>) => {
     const originalRequest: any = error.config;
 
-    // Only handle 401 once
+    if (!originalRequest) return Promise.reject(error);
+
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
@@ -68,6 +46,7 @@ api.interceptors.response.use(
         return new Promise((resolve, reject) => {
           pendingRequests.push((token) => {
             if (!token) return reject(error);
+            originalRequest.headers = originalRequest.headers || {};
             originalRequest.headers.Authorization = `Bearer ${token}`;
             resolve(api(originalRequest));
           });
@@ -77,39 +56,44 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
-        const refreshToken = getRefresh();
+        const refreshToken = authStorage.getRefresh();
         if (!refreshToken) throw error;
 
-        /* ============================
-           COOLDOWN PROTECTION
-        ============================ */
-        const now = Date.now();
-        if (now - lastRefreshAt < 800) {
-          throw error;
-        }
-        lastRefreshAt = now;
-
+        // ✅ refresh
         const res = await refreshApi(refreshToken);
-        const newAccess = res.data?.access_token;
+
+        // ✅ handle both shapes:
+        // 1) { success, data: { access_token } }
+        // 2) { access_token }
+        const newAccess =
+          (res as any)?.data?.access_token ||
+          (res as any)?.access_token;
+
+        const newRefresh =
+          (res as any)?.data?.refresh_token ||
+          (res as any)?.refresh_token;
+
+       // console.log("REFRESH RES", res);
 
         if (!newAccess) throw error;
 
-        setAccess(newAccess);
+        authStorage.setAccess(newAccess);
+        if (newRefresh) authStorage.setRefresh(newRefresh);
 
-        // resolve all queued requests
+        // resolve queued requests
         pendingRequests.forEach((cb) => cb(newAccess));
         pendingRequests = [];
 
+        // retry original
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${newAccess}`;
         return api(originalRequest);
-
       } catch (refreshError) {
         pendingRequests.forEach((cb) => cb(null));
         pendingRequests = [];
 
-        clearAll(); // force logout
-        window.location.href = "/login";
-
+        authStorage.clearAll();
+        window.location.assign("/login");
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

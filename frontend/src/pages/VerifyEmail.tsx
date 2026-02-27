@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+//import { useNavigate, useSearchParams } from "react-router-dom";
 import { verifyEmailApi } from "../api/auth";
+import { useSearchParams } from "react-router-dom";
 
 export default function VerifyEmail() {
   const [params] = useSearchParams();
-  const nav = useNavigate();
+  //const nav = useNavigate();
   const token = params.get("token") || "";
 
   const [msg, setMsg] = useState("Verifying...");

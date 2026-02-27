@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../store/authStore";
 import { logoutApi } from "../api/auth";
+import NotificationBell from "./NotificationBell";
 
-export default function Navbar() {
+export default function Navbar({ rightSlot }: { rightSlot?: ReactNode }) {
   const nav = useNavigate();
   const { user, refreshToken, clearAuth } = useAuth();
 
@@ -24,9 +26,14 @@ export default function Navbar() {
         <span className="muted">{user?.email}</span>
         <span className="badge">{user?.role}</span>
       </div>
-      <button className="btn" onClick={onLogout}>
-        Logout
-      </button>
+
+      <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+        {rightSlot}
+        <NotificationBell />
+        <button className="btn" onClick={onLogout}>
+          Logout
+        </button>
+      </div>
     </div>
   );
 }

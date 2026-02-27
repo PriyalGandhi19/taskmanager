@@ -1,7 +1,7 @@
 import { api } from "./axios";
 import type { User } from "../store/authStore";
 
-type ApiResp<T> = { success: boolean; message: string; data?: T; errors?: any };
+import type { ApiResp } from "./types";
 
 export async function listUsers() {
   const res = await api.get<ApiResp<{ users: User[] }>>("/api/admin/users");

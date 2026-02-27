@@ -1,7 +1,8 @@
 import { api } from "./axios";
 import type { User } from "../store/authStore";
 
-type ApiResp<T> = { success: boolean; message: string; data?: T; errors?: any };
+import type { ApiResp } from "./types";
+
 
 export async function loginApi(email: string, password: string) {
   const res = await api.post<ApiResp<{ access_token: string; refresh_token: string; user: User }>>(
@@ -11,11 +12,19 @@ export async function loginApi(email: string, password: string) {
   return res.data;
 }
 
+// export async function refreshApi(refreshToken: string) {
+//   const res = await api.post<ApiResp<{ access_token: string }>>("/api/auth/refresh", {
+//     refresh_token: refreshToken,
+//   });
+//   return res.data;
+// }
+
 export async function refreshApi(refreshToken: string) {
-  const res = await api.post<ApiResp<{ access_token: string }>>("/api/auth/refresh", {
-    refresh_token: refreshToken,
-  });
-  return res.data;
+  const res = await api.post<ApiResp<{ access_token: string; refresh_token?: string }>>(
+    "/api/auth/refresh",
+    { refresh_token: refreshToken }
+  );
+  return res.data; // ✅ same style as loginApi
 }
 
 export async function logoutApi(refreshToken: string) {
@@ -39,7 +48,23 @@ export async function resetPasswordApi(token: string, new_password: string) {
 }
 
 
+// export async function verifyEmailApi(token: string) {
+//   const res = await api.post<ApiResp<{}>>("/api/auth/verify-email", { token });
+//   return res.data;
+// }
+
 export async function verifyEmailApi(token: string) {
-  const res = await api.post<ApiResp<{}>>("/api/auth/verify-email", { token });
+  const res = await api.post<ApiResp<{ set_password_link?: string }>>(
+    "/api/auth/verify-email",
+    { token }
+  );
+  return res.data;
+}
+
+export async function googleLoginApi(idToken: string) {
+  const res = await api.post<ApiResp<{ access_token: string; refresh_token: string; user: User }>>(
+    "/api/auth/google",
+    { id_token: idToken }
+  );
   return res.data;
 }

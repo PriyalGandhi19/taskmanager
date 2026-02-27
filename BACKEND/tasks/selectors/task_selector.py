@@ -20,7 +20,6 @@ def get_tasks_with_attachments(actor_id: str) -> list[dict]:
             "created_at": a["created_at"],
         })
 
-    # normalize task rows
     for r in rows:
         r["id"] = str(r["id"])
         r["owner_id"] = str(r["owner_id"])
@@ -30,6 +29,8 @@ def get_tasks_with_attachments(actor_id: str) -> list[dict]:
         r["can_edit_content"] = bool(r.get("can_edit_content", False))
         r["can_delete"] = bool(r.get("can_delete", False))
 
+        # ✅ new fields exist in fn_get_tasks_for_user now
+        # due_date may be None or datetime; priority is text; completed_at maybe datetime
         r["attachments"] = att_map.get(r["id"], [])
 
     return rows

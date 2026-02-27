@@ -1,14 +1,25 @@
 from rest_framework.views import APIView
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+from django.http import HttpResponse
+import csv
 
 from backend.utils.decorators import require_auth
 from backend.utils.responses import ok, fail
 
-from adminapp.serializers import CreateUserSerializer, AuditLogQuerySerializer, SendDocumentSerializer
+from adminapp.serializers import (
+    CreateUserSerializer,
+    AuditLogQuerySerializer,
+    SendDocumentSerializer,
+)
+
 from adminapp.selectors.admin_selector import get_users, get_audit_logs
 from adminapp.services.user_service import create_user
 from adminapp.services.document_service import send_document
 
+from adminapp.repositories.auth_activity_repo import (
+    list_auth_activity,
+    count_auth_activity,
+)
 
 class ListUsersView(APIView):
     @require_auth(roles=["ADMIN"])
@@ -71,3 +82,76 @@ class SendDocumentEmailView(APIView):
             return fail("Email failed", errors={"detail": str(ex)}, status=400)
 
         return ok(message="PDF sent successfully via email")
+    
+
+class AdminAuthActivityView(APIView):
+    @require_auth(roles=["ADMIN"])
+    def get(self, request):
+        limit = int(request.GET.get("limit", 100))
+        page = int(request.GET.get("page", 1))
+
+        email = (request.GET.get("email") or "").strip().lower() or None
+        event = (request.GET.get("event") or "").strip() or None
+        success = (request.GET.get("success") or "").strip() or None
+        date_from = (request.GET.get("from") or "").strip() or None
+        date_to = (request.GET.get("to") or "").strip() or None
+
+        offset = (page - 1) * limit
+
+        items = list_auth_activity(
+            email=email,
+            event=event,
+            success=success,
+            date_from=date_from,
+            date_to=date_to,
+            limit=limit,
+            offset=offset,
+        )
+
+        total = count_auth_activity(
+            email=email,
+            event=event,
+            success=success,
+            date_from=date_from,
+            date_to=date_to,
+        )
+
+        return ok(data={"items": items, "total": total})
+
+
+class AdminAuthActivityExportView(APIView):
+    @require_auth(roles=["ADMIN"])
+    def get(self, request):
+        email = (request.GET.get("email") or "").strip().lower() or None
+        event = (request.GET.get("event") or "").strip() or None
+        success = (request.GET.get("success") or "").strip() or None
+        date_from = (request.GET.get("from") or "").strip() or None
+        date_to = (request.GET.get("to") or "").strip() or None
+
+        rows = list_auth_activity(
+            email=email,
+            event=event,
+            success=success,
+            date_from=date_from,
+            date_to=date_to,
+            limit=50000,
+            offset=0,
+        )
+
+        resp = HttpResponse(content_type="text/csv")
+        resp["Content-Disposition"] = 'attachment; filename="auth_activity.csv"'
+
+        writer = csv.writer(resp)
+        writer.writerow(["created_at", "email", "event", "success", "ip", "user_agent"])
+
+        for r in rows:
+            writer.writerow([
+                r.get("created_at"),
+                r.get("email"),
+                r.get("event"),
+                r.get("success"),
+                r.get("ip"),
+                (r.get("user_agent") or "")[:200],
+            ])
+
+        return resp

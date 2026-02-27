@@ -49,3 +49,30 @@ class SendDocumentSerializer(serializers.Serializer):
         if err:
             raise serializers.ValidationError(err)
         return e
+    
+class AuthActivityQuerySerializer(serializers.Serializer):
+    email = serializers.CharField(required=False, allow_blank=True)
+    from_date = serializers.CharField(required=False, allow_blank=True)
+    to_date = serializers.CharField(required=False, allow_blank=True)
+    page = serializers.IntegerField(required=False, default=1)
+    limit = serializers.IntegerField(required=False, default=20)
+
+    def validate_email(self, value: str):
+        v = (value or "").strip().lower()
+        return v
+
+    def validate_from_date(self, value: str):
+        v = (value or "").strip()
+        return v
+
+    def validate_to_date(self, value: str):
+        v = (value or "").strip()
+        return v
+
+    def validate_page(self, value: int):
+        return value if value and value > 0 else 1
+
+    def validate_limit(self, value: int):
+        if value < 1 or value > 200:
+            return 20
+        return value
