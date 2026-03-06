@@ -43,6 +43,7 @@ Allowed formats:
 * PDF
 * PNG
 * JPG / JPEG
+* Docx
 
 Example uploads:
 
