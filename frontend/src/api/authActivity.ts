@@ -4,7 +4,7 @@ export type AuthActivity = {
   id: number;
   user_id: string | null;
   email: string;
-  event: "LOGIN" | "LOGOUT" | "FAILED_LOGIN";
+  event: "LOGIN" | "LOGOUT" | "FAILED_LOGIN" | "SESSION_TIMEOUT";
   ip: string | null;
   user_agent: string | null;
   success: boolean;
@@ -21,7 +21,7 @@ export type AuthActivityQuery = {
   to?: string;     // YYYY-MM-DD
 
   // ✅ ADD THESE
-  event?: "LOGIN" | "LOGOUT" | "FAILED_LOGIN" | string;
+  event?: "LOGIN" | "LOGOUT" | "FAILED_LOGIN" | "SESSION_TIMEOUT"  | string;
   success?: "true" | "false";
 };
 
@@ -31,7 +31,7 @@ export type AuthActivityExportQuery = {
   to?: string;
 
   // ✅ ADD THESE
-  event?: "LOGIN" | "LOGOUT" | "FAILED_LOGIN" | string;
+  event?: "LOGIN" | "LOGOUT" | "FAILED_LOGIN"  | "SESSION_TIMEOUT" | string;
   success?: "true" | "false";
 };
 

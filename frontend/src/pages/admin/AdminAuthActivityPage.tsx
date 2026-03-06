@@ -11,7 +11,7 @@ import {
 import { triggerDownload } from "../../utils/download";
 
 // strict unions (matches api/authActivity.ts)
-type EventType = "" | "LOGIN" | "LOGOUT" | "FAILED_LOGIN";
+type EventType = "" | "LOGIN" | "LOGOUT" | "FAILED_LOGIN" | "SESSION_TIMEOUT" ;
 type SuccessFilter = "" | "true" | "false";
 
 function shortText(s?: string | null, n = 36) {
@@ -240,6 +240,7 @@ export default function AdminAuthActivityPage() {
                 <option value="LOGIN">LOGIN</option>
                 <option value="LOGOUT">LOGOUT</option>
                 <option value="FAILED_LOGIN">FAILED_LOGIN</option>
+                <option value="SESSION_TIMEOUT">SESSION_TIMEOUT</option>
               </select>
 
               <select

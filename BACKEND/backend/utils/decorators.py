@@ -18,6 +18,7 @@ from authapp.repositories.auth_activity_repo import insert_auth_activity
 # CONFIG
 # =========================
 IDLE_SECONDS = 15 * 60  
+#IDLE_SECONDS = 30 
 
 COOKIE_NAME = "tm_session"
 COOKIE_MAX_AGE = 900  # 15 min sliding cookie expiry
