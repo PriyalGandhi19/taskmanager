@@ -1,7 +1,7 @@
 from django.utils.dateparse import parse_date
 from backend.utils.db import fetch_all, fetch_one
 
-ALLOWED_EVENTS = {"LOGIN", "LOGOUT", "FAILED_LOGIN"}
+ALLOWED_EVENTS = {"LOGIN", "LOGOUT", "FAILED_LOGIN","SESSION_TIMEOUT"}
 
 def list_auth_activity(
     email=None,

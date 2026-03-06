@@ -26,6 +26,8 @@ from authapp.services.auth_service import (
 from authapp.repositories.auth_activity_repo import insert_auth_activity
 from backend.utils.decorators import require_auth
 
+from authapp.repositories.session_repo import create_session , revoke_all_sessions_for_user
+from authapp.repositories.session_repo import revoke_session
 # ✅ ---- HELPER FUNCTIONS HERE ----
 
 def _get_ip(request):
@@ -57,7 +59,20 @@ class LoginView(APIView):
                 success=True,
             )
 
-            return ok(data=data, message="Logged in")
+            # return ok(data=data, message="Logged in")
+            revoke_all_sessions_for_user(data["user"]["id"])
+            sid = create_session(data["user"]["id"])
+
+            resp = ok(data=data, message="Logged in")
+            resp.set_cookie(
+                "tm_session",
+                sid,
+                httponly=True,
+                samesite="None",
+                secure=True,     # prod HTTPS -> True
+                max_age=900,      # 15 min
+            )
+            return resp
 
         except PermissionError as ex:
             msg = str(ex)
@@ -81,6 +96,76 @@ class LoginView(APIView):
         except Exception as ex:
             return fail("Server error", errors={"detail": str(ex)}, status=500)
 
+# class GoogleLoginView(APIView):
+#     def post(self, request):
+#         try:
+#             token = (request.data.get("id_token") or "").strip()
+#             if not token:
+#                 return fail("id_token is required", status=422)
+
+#             info = id_token.verify_oauth2_token(
+#                 token,
+#                 google_requests.Request(),
+#                 settings.GOOGLE_CLIENT_ID,
+#             )
+
+#             email = (info.get("email") or "").lower().strip()
+#             if not email:
+#                 return fail("Google token has no email", status=400)
+
+#             row = fetch_one(
+#                 "SELECT id, email, role, is_active FROM users WHERE email=%s;",
+#                 [email],
+#             )
+
+#             if not row:
+#                 execute(
+#                     "INSERT INTO users(email, password_hash, role, email_verified, must_set_password) "
+#                     "VALUES (%s, %s, 'A', TRUE, FALSE) RETURNING id;",
+#                     [email, "GOOGLE_AUTH_NO_PASSWORD"],
+#                 )
+#                 row = fetch_one(
+#                     "SELECT id, email, role, is_active FROM users WHERE email=%s;",
+#                     [email],
+#                 )
+
+#             if not row or not row["is_active"]:
+#                 return fail("User inactive", status=403)
+
+#             access = make_access_token(str(row["id"]), row["role"], row["email"])
+#             refresh = make_refresh_token()
+#             refresh_sha = sha256_hex(refresh)
+#             exp = refresh_expiry()
+
+#             execute(
+#                 "INSERT INTO refresh_tokens(user_id, token_sha256, expires_at) VALUES (%s, %s, %s);",
+#                 [row["id"], refresh_sha, exp],
+#             )
+
+#             # ✅ log google login
+#             insert_auth_activity(
+#                 user_id=str(row["id"]),
+#                 email=row["email"],
+#                 event="LOGIN",
+#                 ip=_get_ip(request),
+#                 user_agent=_get_ua(request),
+#                 success=True,
+#             )
+
+#             return ok(
+#                 message="Google login success",
+#                 data={
+#                     "access_token": access,
+#                     "refresh_token": refresh,
+#                     "user": {"id": str(row["id"]), "email": row["email"], "role": row["role"]},
+#                 },
+#             )
+
+#         except ValueError as e:
+#             return fail("Invalid Google token", errors={"detail": str(e)}, status=401)
+#         except Exception as ex:
+#             return fail("Server error", errors={"detail": str(ex)}, status=500)
+
 class GoogleLoginView(APIView):
     def post(self, request):
         try:
@@ -97,6 +182,9 @@ class GoogleLoginView(APIView):
             email = (info.get("email") or "").lower().strip()
             if not email:
                 return fail("Google token has no email", status=400)
+
+            if not info.get("email_verified", False):
+                return fail("Google email not verified", status=401)
 
             row = fetch_one(
                 "SELECT id, email, role, is_active FROM users WHERE email=%s;",
@@ -127,7 +215,6 @@ class GoogleLoginView(APIView):
                 [row["id"], refresh_sha, exp],
             )
 
-            # ✅ log google login
             insert_auth_activity(
                 user_id=str(row["id"]),
                 email=row["email"],
@@ -137,21 +224,39 @@ class GoogleLoginView(APIView):
                 success=True,
             )
 
-            return ok(
+            # create same session cookie as normal login
+            revoke_all_sessions_for_user(row["id"])
+            sid = create_session(row["id"])
+
+            resp = ok(
                 message="Google login success",
                 data={
                     "access_token": access,
                     "refresh_token": refresh,
-                    "user": {"id": str(row["id"]), "email": row["email"], "role": row["role"]},
+                    "user": {
+                        "id": str(row["id"]),
+                        "email": row["email"],
+                        "role": row["role"],
+                    },
                 },
             )
+
+            resp.set_cookie(
+                "tm_session",
+                sid,
+                httponly=True,
+                samesite="None",
+                secure=True,
+                max_age=900,
+            )
+            return resp
 
         except ValueError as e:
             return fail("Invalid Google token", errors={"detail": str(e)}, status=401)
         except Exception as ex:
             return fail("Server error", errors={"detail": str(ex)}, status=500)
-
-
+        
+        
 
         
 class RefreshView(APIView):
@@ -187,7 +292,17 @@ class LogoutView(APIView):
             success=True,
         )
 
+        # logout(ser.validated_data["refresh_token"])
+        sid = request.COOKIES.get("tm_session")
+
         logout(ser.validated_data["refresh_token"])
+
+        resp = ok(message="Logged out")
+        if sid:
+            revoke_session(sid)
+            resp.delete_cookie("tm_session")
+        return resp
+    
         return ok(message="Logged out")
 
 

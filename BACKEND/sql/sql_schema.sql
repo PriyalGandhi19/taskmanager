@@ -728,3 +728,28 @@ CREATE INDEX IF NOT EXISTS idx_auth_activity_event ON auth_activity (event);
 ALTER TABLE auth_activity
 ADD COLUMN IF NOT EXISTS role TEXT NULL;
 CREATE INDEX IF NOT EXISTS idx_auth_activity_role ON auth_activity(role);
+
+ALTER TABLE auth_activity DROP CONSTRAINT IF EXISTS auth_activity_event_check;
+
+ALTER TABLE auth_activity
+  ADD CONSTRAINT auth_activity_event_check
+  CHECK (event IN ('LOGIN','LOGOUT','FAILED_LOGIN','SESSION_TIMEOUT'));
+
+
+  user_sessions
+
+  CREATE TABLE IF NOT EXISTS user_sessions (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  revoked        BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_sessions_last_seen_at ON user_sessions(last_seen_at);
+
+ALTER TABLE notifications
+ADD COLUMN IF NOT EXISTS actor_id UUID NULL REFERENCES users(id) ON DELETE SET NULL;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_actor ON notifications(actor_id);

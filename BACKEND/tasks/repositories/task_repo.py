@@ -20,6 +20,8 @@ def get_task_acl(task_id: str) -> dict | None:
         [task_id],
     )
 
+
+
 def create_task_returning_id(
     actor_id: str,
     title: str,
@@ -56,3 +58,7 @@ def get_user_email(user_id: str) -> dict | None:
 def get_task_summary_for_user(user_id: str) -> dict:
     row = fetch_one("SELECT * FROM fn_task_summary_for_user(%s);", [user_id])
     return row or {"total": 0, "pending": 0, "in_progress": 0, "completed": 0, "completion_pct": 0}
+
+def get_admin_ids():
+    rows = fetch_all("SELECT id FROM users WHERE role = 'ADMIN'")
+    return [str(r["id"]) for r in rows]

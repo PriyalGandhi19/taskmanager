@@ -7,9 +7,10 @@ export type TaskPriority = "HIGH" | "MEDIUM" | "LOW";
 export type TaskComment = {
   id: string;
   task_id: string;
-  author_id: string;
-  author_email: string;
+  user_id: string;
+  user_email: string;
   content: string;
+  is_edited: boolean;
   created_at: string;
   updated_at?: string | null;
 };
@@ -58,24 +59,40 @@ export async function createTask(payload: {
   priority: TaskPriority;
   due_date?: string | null;
   owner_id?: string;
+
+  // ✅ NEW: multiple attachments
+  files?: File[];
+
+  // ✅ keep backward compatibility (optional)
   file?: File | null;
 }) {
-  // ✅ easiest: always multipart (works even if file is null)
+  // ✅ easiest: always multipart
   const fd = new FormData();
   fd.append("title", payload.title);
   fd.append("description", payload.description || "");
   fd.append("status", payload.status);
   fd.append("priority", payload.priority);
 
-  // ✅ IMPORTANT:
-  // send only if present (backend should default null otherwise)
   if (payload.due_date) fd.append("due_date", payload.due_date);
-
   if (payload.owner_id) fd.append("owner_id", payload.owner_id);
-  if (payload.file) fd.append("file", payload.file);
+
+  // ✅ NEW: append multiple files with key "files"
+  if (payload.files && payload.files.length > 0) {
+    for (const f of payload.files) {
+      fd.append("files", f);
+    }
+  }
+
+  // ✅ fallback (if someone still passes single file)
+  if (payload.file) {
+    fd.append("files", payload.file); // use "files" so backend reads one path
+  }
 
   const res = await api.post<ApiResp<{}>>("/api/tasks", fd, {
-    headers: { "Content-Type": "multipart/form-data" },
+    headers: {
+      "Content-Type": "multipart/form-data",
+      "X-USER-ACTIVE": "1",
+    },
   });
 
   return res.data;
@@ -97,12 +114,17 @@ export async function updateTask(
     due_date: payload.due_date === "" ? null : payload.due_date ?? null,
   };
 
-  const res = await api.put<ApiResp<{}>>(`/api/tasks/${taskId}`, finalPayload);
+  const res = await api.put<ApiResp<{}>>(`/api/tasks/${taskId}`, finalPayload, {
+    headers: { "X-USER-ACTIVE": "1" },
+  });
+
   return res.data;
 }
 
 export async function deleteTask(taskId: string) {
-  const res = await api.delete<ApiResp<{}>>(`/api/tasks/${taskId}`);
+  const res = await api.delete<ApiResp<{}>>(`/api/tasks/${taskId}`, {
+    headers: { "X-USER-ACTIVE": "1" },
+  });
   return res.data;
 }
 
@@ -111,4 +133,38 @@ export async function downloadAttachment(attachmentId: string) {
     responseType: "blob",
   });
   return res.data as Blob;
+}
+
+// GET comments for a task
+export async function getTaskComments(taskId: string) {
+  const res = await api.get<ApiResp<{ comments: TaskComment[] }>>(
+    `/api/tasks/${taskId}/comments`
+  );
+  return res.data;
+}
+
+// POST add comment
+export async function addTaskComment(taskId: string, content: string) {
+  const res = await api.post<ApiResp<{ comment: TaskComment }>>(
+    `/api/tasks/${taskId}/comments`,
+    { content },
+    { headers: { "X-USER-ACTIVE": "1" } }
+  );
+  return res.data;
+}
+
+export async function updateTaskComment(commentId: string, content: string) {
+  const res = await api.patch<ApiResp<{}>>(
+    `/api/comments/${commentId}`,
+    { content },
+    { headers: { "X-USER-ACTIVE": "1" } }
+  );
+  return res.data;
+}
+
+export async function deleteTaskComment(commentId: string) {
+  const res = await api.delete<ApiResp<{}>>(`/api/comments/${commentId}`, {
+    headers: { "X-USER-ACTIVE": "1" },
+  });
+  return res.data;
 }

@@ -104,16 +104,14 @@ export function UsersSection({
           </div>
         ))}
 
-        {!loading && usersAB.length === 0 && (
-          <div className="muted">No users yet.</div>
-        )}
+        {!loading && usersAB.length === 0 && <div className="muted">No users yet.</div>}
       </div>
     </div>
   );
 }
 
 export function TasksSection({
-  tasks, // ✅ pagedTasks
+  tasks,
   allCount,
   loading,
 
@@ -135,6 +133,8 @@ export function TasksSection({
 
   userEmailById,
   onQuickStatus,
+  onView,
+  onComment,
   onEdit,
   onDelete,
   onDownload,
@@ -161,6 +161,10 @@ export function TasksSection({
 
   userEmailById: Record<string, string>;
   onQuickStatus: (task: Task, status: TaskStatus) => Promise<void>;
+
+  onView: (task: Task) => void;
+  onComment: (task: Task) => void;
+
   onEdit: (task: Task) => void;
   onDelete: (task: Task) => Promise<void>;
   onDownload: (attId: string, filename: string) => Promise<void>;
@@ -184,7 +188,7 @@ export function TasksSection({
         </div>
       </div>
 
-      {/* ✅ Search + Owner filter + Page size */}
+      {/* Search + Owner filter + Page size */}
       <div className="row" style={{ justifyContent: "space-between" }}>
         <div
           style={{
@@ -231,7 +235,7 @@ export function TasksSection({
           </div>
         </div>
 
-        {/* ✅ Pagination controls */}
+        {/* Pagination */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           <button className="btn" disabled={page <= 1} onClick={() => setPage(1)}>
             {"<<"}
@@ -270,7 +274,6 @@ export function TasksSection({
                 Assigned to: <b>{userEmailById[t.owner_id] || t.owner_id}</b>
               </div>
 
-              {/* ✅ NEW: Priority + Due date + Overdue */}
               <div className="muted small">
                 Priority: <b>{t.priority ?? "MEDIUM"}</b>
               </div>
@@ -288,15 +291,9 @@ export function TasksSection({
                 <div style={{ marginTop: 8 }}>
                   <div style={{ fontWeight: 600 }}>Attachments</div>
                   {t.attachments.map((a) => (
-                    <div
-                      key={a.id}
-                      style={{ display: "flex", gap: 10, marginTop: 4 }}
-                    >
+                    <div key={a.id} style={{ display: "flex", gap: 10, marginTop: 4 }}>
                       <span className="muted small">{a.original_name}</span>
-                      <button
-                        className="btn"
-                        onClick={() => onDownload(a.id, a.original_name)}
-                      >
+                      <button className="btn" onClick={() => onDownload(a.id, a.original_name)}>
                         Download
                       </button>
                     </div>
@@ -314,6 +311,14 @@ export function TasksSection({
             </div>
 
             <div className="row" style={{ gap: 8 }}>
+              <button className="btn" onClick={() => onView(t)}>
+                View
+              </button>
+
+              <button className="btn" onClick={() => onComment(t)}>
+                Add Comment
+              </button>
+
               <button className="btn" onClick={() => onEdit(t)} disabled={!t.can_edit_status}>
                 Edit
               </button>
@@ -325,14 +330,13 @@ export function TasksSection({
           </div>
         ))}
 
-        {!loading && tasks.length === 0 && (
-          <div className="muted">No tasks match your filters.</div>
-        )}
+        {!loading && tasks.length === 0 && <div className="muted">No tasks match your filters.</div>}
       </div>
     </div>
   );
 }
 
+/* AuditSection untouched in your paste; keep as-is if already working */
 export function AuditSection({
   logs,
   loading,

@@ -101,7 +101,6 @@ export default function AdminAuditPage() {
 
             <div>
               <h2 style={{ margin: 0 }}>Audit Logs</h2>
-              <div className="muted small">Click a row to expand details</div>
             </div>
           </div>
 

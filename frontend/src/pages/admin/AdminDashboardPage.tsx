@@ -39,7 +39,7 @@ export default function AdminDashboardPage() {
           </button>
 
           <button className="btn primary" onClick={() => a.setOpenDoc(true)}>
-            Send PDF
+            Send Document
           </button>
 
           <button className="btn danger" onClick={() => navigate("/admin/audit")}>
@@ -47,11 +47,11 @@ export default function AdminDashboardPage() {
           </button>
 
           <button
-  className="btn danger"
-  onClick={() => navigate("/admin/auth-activity")}
->
-  View Auth Activity
-</button>
+            className="btn danger"
+            onClick={() => navigate("/admin/auth-activity")}
+          >
+            View Auth Activity
+          </button>
 
           <button className="btn" onClick={a.loadAll}>
             Refresh
@@ -68,7 +68,11 @@ export default function AdminDashboardPage() {
 
         <AdminChartsSection tasks={a.tasks} users={a.users} />
 
-        <UsersSection usersAB={a.usersAB} loading={a.loading} shortId={a.shortId} />
+        <UsersSection
+          usersAB={a.usersAB}
+          loading={a.loading}
+          shortId={a.shortId}
+        />
 
         <TasksSection
           tasks={a.pagedTasks}
@@ -88,6 +92,8 @@ export default function AdminDashboardPage() {
           setPageSize={a.setPageSize}
           userEmailById={a.userEmailById}
           onQuickStatus={a.quickStatus}
+          onView={a.openViewModal}
+          onComment={a.openCommentModal}
           onEdit={a.openEditModal}
           onDelete={a.removeTask}
           onDownload={a.handleDownload}
@@ -109,18 +115,29 @@ export default function AdminDashboardPage() {
         taskForm={a.taskForm}
         setTaskForm={a.setTaskForm}
         usersAB={a.usersAB}
-        taskPdf={a.taskPdf}
-        setTaskPdf={a.setTaskPdf}
+        taskFiles={a.taskFiles}
+        setTaskFiles={a.setTaskFiles}
         onSubmit={a.submitCreateTask}
       />
 
       <EditTaskModal
         open={a.openEdit}
-        onClose={() => a.setOpenEdit(false)}
+        mode={a.modalMode}
+        onClose={() => {
+          a.setOpenEdit(false);
+          a.setEditTask(null);
+          a.setErr("");
+        }}
         editTask={a.editTask}
         editForm={a.editForm}
         setEditForm={a.setEditForm}
         onSubmit={a.submitEditTask}
+        comments={a.comments}
+        commentsLoading={a.commentsLoading}
+        onAddComment={a.addCommentToCurrentTask}
+        onEditComment={a.editCommentForCurrentTask}
+        onDeleteComment={a.deleteCommentForCurrentTask}
+
       />
 
       <SendDocModal

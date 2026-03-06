@@ -12,6 +12,8 @@ import SetPassword from "./pages/SetPassword";
 
 import AdminAuthActivityPage from "./pages/admin/AdminAuthActivityPage";
 
+import SessionExpiredBanner from "./components/SessionExpiredBanner";
+
 // ✅ lazy components MUST be top-level
 const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage"));
 const AdminAuditPage = lazy(() => import("./pages/admin/AdminAuditPage"));
@@ -21,6 +23,9 @@ export default function App() {
   const { user } = useAuth();
 
   return (
+    <>
+    <SessionExpiredBanner />
+    
     <Suspense fallback={<div className="muted" style={{ padding: 24 }}>Loading...</div>}>
       <Routes>
         <Route path="/login" element={<Login />} />
@@ -84,5 +89,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    </>
   );
 }

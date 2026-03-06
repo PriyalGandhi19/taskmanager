@@ -16,7 +16,7 @@ from tasks.selectors.task_selector import get_tasks_with_attachments
 from tasks.selectors.comment_selector import get_comments
 from tasks.selectors.notification_selector import get_notifications
 from tasks.services.task_service import create_task, update_task, delete_task, get_download_file
-from tasks.services.comment_service import add_comment, edit_comment
+from tasks.services.comment_service import add_comment, edit_comment , remove_comment
 from tasks.services.notification_service import read_notification, read_all
 from tasks.repositories.task_repo import get_task_summary_for_user
 
@@ -41,14 +41,21 @@ class TaskListCreateView(APIView):
 
         actor_id = request.user_ctx["id"]
         actor_role = request.user_ctx["role"]
-        uploaded_file = request.FILES.get("file")
+
+        # ✅ NEW: multiple files
+        uploaded_files = request.FILES.getlist("files")
+
+        # ✅ backward compatibility (if someone still sends file)
+        one = request.FILES.get("file")
+        if one and not uploaded_files:
+            uploaded_files = [one]
 
         try:
             result = create_task(
                 actor_id=actor_id,
                 actor_role=actor_role,
                 data=ser.validated_data,
-                uploaded_file=uploaded_file,
+                uploaded_files=uploaded_files,
             )
         except PermissionError as e:
             return fail(str(e), status=422)
@@ -170,6 +177,7 @@ class TaskCommentsView(APIView):
 class CommentUpdateView(APIView):
     """
     PATCH /api/comments/<uuid:comment_id>
+    DELETE /api/comments/<uuid:comment_id>
     """
     @require_auth(roles=["ADMIN", "A", "B"])
     def patch(self, request, comment_id):
@@ -194,6 +202,26 @@ class CommentUpdateView(APIView):
             return fail("Could not update comment", errors={"detail": str(e)}, status=400)
 
         return ok(message="Comment updated")
+    
+    @require_auth(roles=["ADMIN", "A", "B"])
+    def delete(self, request, comment_id):
+        actor_id = request.user_ctx["id"]
+        actor_role = request.user_ctx["role"]
+
+        try:
+            remove_comment(
+                actor_id=actor_id,
+                actor_role=actor_role,
+                comment_id=str(comment_id),
+            )
+        except LookupError:
+            return fail("Comment not found", status=404)
+        except PermissionError:
+            return fail("Forbidden", status=403)
+        except Exception as e:
+            return fail("Could not delete comment", errors={"detail": str(e)}, status=400)
+
+        return ok(message="Comment deleted")
 
 
 class NotificationListView(APIView):

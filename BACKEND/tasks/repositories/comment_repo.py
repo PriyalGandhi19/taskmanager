@@ -52,3 +52,13 @@ def update_comment(comment_id: str, content: str) -> None:
         """,
         [content, comment_id],
     )
+    
+def delete_comment(comment_id: str) -> None:
+    fetch_one(
+        """
+        DELETE FROM task_comments
+        WHERE id = %s
+        RETURNING id;
+        """,
+        [comment_id],
+    )

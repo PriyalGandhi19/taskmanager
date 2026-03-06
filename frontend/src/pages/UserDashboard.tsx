@@ -1,5 +1,4 @@
 // src/pages/UserDashboard.tsx
-
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "../components/Navbar";
 import Modal from "../components/Modal";
@@ -10,16 +9,24 @@ import {
   getTasks,
   updateTask,
   downloadAttachment,
+  getTaskComments,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
 } from "../api/tasks";
-import type { Task, TaskStatus, TaskPriority } from "../api/tasks";
+import type { Task, TaskStatus, TaskPriority, TaskComment } from "../api/tasks";
 import { triggerDownload } from "../utils/download";
-//import NotificationBell from "../components/NotificationBell";
+import CommentsSection from "../components/CommentsSection";
+import { useAuth } from "../store/authStore";
 
 export default function UserDashboard() {
+  const { user } = useAuth();
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
+  // Create modal
   const [openTask, setOpenTask] = useState(false);
 
   const [taskForm, setTaskForm] = useState({
@@ -30,11 +37,13 @@ export default function UserDashboard() {
     due_date: "" as string,
   });
 
-  // optional pdf (create only)
-  const [taskPdf, setTaskPdf] = useState<File | null>(null);
+  // ✅ multiple attachments
+  const [taskFiles, setTaskFiles] = useState<File[]>([]);
 
-  // EDIT modal
+  // Shared modal: VIEW / COMMENT / EDIT
   const [openEdit, setOpenEdit] = useState(false);
+  const [modalMode, setModalMode] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
+
   const [editTask, setEditTask] = useState<Task | null>(null);
 
   const [editForm, setEditForm] = useState({
@@ -44,6 +53,10 @@ export default function UserDashboard() {
     priority: "MEDIUM" as TaskPriority,
     due_date: "" as string,
   });
+
+  // Comments
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
 
   // Filters
   const [filter, setFilter] = useState<Record<TaskStatus, boolean>>({
@@ -80,12 +93,15 @@ export default function UserDashboard() {
   const handleDownload = async (attId: string, filename: string) => {
     try {
       const blob = await downloadAttachment(attId);
-      triggerDownload(blob, filename || "file.pdf");
+      triggerDownload(blob, filename || "file");
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Download failed");
     }
   };
 
+  // =========================
+  // CREATE TASK
+  // =========================
   const submitCreateTask = async () => {
     setErr("");
 
@@ -93,8 +109,7 @@ export default function UserDashboard() {
     const description = taskForm.description.trim();
 
     if (title.length < 3) return setErr("Title must be at least 3 characters.");
-    if (description.length < 5)
-      return setErr("Description must be at least 5 characters.");
+    if (description.length < 5) return setErr("Description must be at least 5 characters.");
 
     try {
       const res = await createTask({
@@ -103,7 +118,7 @@ export default function UserDashboard() {
         status: taskForm.status,
         priority: taskForm.priority,
         due_date: taskForm.due_date || null,
-        file: taskPdf,
+        files: taskFiles,
       });
 
       if (!res.success) throw new Error(res.message);
@@ -116,14 +131,17 @@ export default function UserDashboard() {
         priority: "MEDIUM",
         due_date: "",
       });
-      setTaskPdf(null);
+      setTaskFiles([]);
+
       await load();
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Create task failed");
     }
   };
 
+  // =========================
   // STATUS update
+  // =========================
   const quickStatus = async (task: Task, status: TaskStatus) => {
     if (!task.can_edit_status) {
       setErr("You cannot change status for this task.");
@@ -144,7 +162,9 @@ export default function UserDashboard() {
     }
   };
 
+  // =========================
   // Delete
+  // =========================
   const removeTask = async (task: Task) => {
     if (!task.can_delete) {
       setErr("You cannot delete this task (only creator can).");
@@ -158,8 +178,26 @@ export default function UserDashboard() {
     }
   };
 
-  // Open Edit modal
-  const openEditModal = (t: Task) => {
+  // =========================
+  // COMMENTS loader
+  // =========================
+  const loadCommentsForTask = async (taskId: string) => {
+    setComments([]);
+    setCommentsLoading(true);
+    try {
+      const res = await getTaskComments(taskId);
+      setComments(res.data?.comments || []);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || "Failed to load comments");
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  // =========================
+  // OPEN MODALS
+  // =========================
+  const openViewModal = async (t: Task) => {
     setErr("");
     setEditTask(t);
     setEditForm({
@@ -169,18 +207,88 @@ export default function UserDashboard() {
       priority: (t.priority ?? "MEDIUM") as TaskPriority,
       due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
     });
+
+    setModalMode("VIEW");
     setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
   };
 
-  // Save Edit
+  const openCommentModal = async (t: Task) => {
+    setErr("");
+    setEditTask(t);
+    setEditForm({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: (t.priority ?? "MEDIUM") as TaskPriority,
+      due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
+    });
+
+    setModalMode("COMMENT");
+    setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
+  };
+
+  const openEditModal = async (t: Task) => {
+    setErr("");
+    setEditTask(t);
+    setEditForm({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: (t.priority ?? "MEDIUM") as TaskPriority,
+      due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
+    });
+
+    setModalMode("EDIT");
+    setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
+  };
+
+  // =========================
+  // ADD COMMENT
+  // =========================
+  const addCommentToCurrentTask = async (text: string) => {
+    if (!editTask) return;
+    try {
+      await addTaskComment(editTask.id, text);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to add comment");
+    }
+  };
+
+   const editCommentForCurrentTask = async (commentId: string, text: string) => {
+    if (!editTask) return;
+    try {
+      await updateTaskComment(commentId, text);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to update comment");
+    }
+  };
+
+  const deleteCommentForCurrentTask = async (commentId: string) => {
+    if (!editTask) return;
+    try {
+      await deleteTaskComment(commentId);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to delete comment");
+    }
+  };
+
+  // =========================
+  // SAVE EDIT
+  // =========================
   const submitEdit = async () => {
     if (!editTask) return;
 
     const payload = editTask.can_edit_content
-      ? {
-          ...editForm,
-          due_date: editForm.due_date || null,
-        }
+      ? { ...editForm, due_date: editForm.due_date || null }
       : {
           title: editTask.title,
           description: editTask.description,
@@ -191,17 +299,30 @@ export default function UserDashboard() {
 
     try {
       await updateTask(editTask.id, payload);
+
       setOpenEdit(false);
       setEditTask(null);
+      setComments([]);
+
       await load();
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Edit failed");
     }
   };
 
+  // UI helpers
+  const isView = modalMode === "VIEW";
+  const isComment = modalMode === "COMMENT";
+  const isEdit = modalMode === "EDIT";
+
+  const canEditContent = isEdit && (editTask?.can_edit_content ?? false);
+  const canEditStatus = isEdit && (editTask?.can_edit_status ?? false);
+
+  const modalTitle = isView ? "View Task" : isComment ? "Add Comment" : "Edit Task";
+
   return (
     <div>
-      <Navbar  />
+      <Navbar />
 
       <div className="container">
         <h2>My Tasks</h2>
@@ -219,51 +340,47 @@ export default function UserDashboard() {
         </div>
 
         {/* KPI */}
-<div className="kpiGrid">
-  <div className="kpiCard">
-    <div className="kpiTitle">Total</div>
-    <div className="kpiValue">{tasks.length}</div>
-  </div>
+        <div className="kpiGrid">
+          <div className="kpiCard">
+            <div className="kpiTitle">Total</div>
+            <div className="kpiValue">{tasks.length}</div>
+          </div>
 
-  <div className="kpiCard">
-    <div className="kpiTitle">Pending</div>
-    <div className="kpiValue">
-      {tasks.filter((t) => t.status === "PENDING").length}
-    </div>
-  </div>
+          <div className="kpiCard">
+            <div className="kpiTitle">Pending</div>
+            <div className="kpiValue">
+              {tasks.filter((t) => t.status === "PENDING").length}
+            </div>
+          </div>
 
-  <div className="kpiCard">
-    <div className="kpiTitle">In Progress</div>
-    <div className="kpiValue">
-      {tasks.filter((t) => t.status === "IN_PROGRESS").length}
-    </div>
-  </div>
+          <div className="kpiCard">
+            <div className="kpiTitle">In Progress</div>
+            <div className="kpiValue">
+              {tasks.filter((t) => t.status === "IN_PROGRESS").length}
+            </div>
+          </div>
 
-  <div className="kpiCard">
-    <div className="kpiTitle">Completed</div>
-    <div className="kpiValue">
-      {tasks.filter((t) => t.status === "COMPLETED").length}
-    </div>
-  </div>
-</div>
+          <div className="kpiCard">
+            <div className="kpiTitle">Completed</div>
+            <div className="kpiValue">
+              {tasks.filter((t) => t.status === "COMPLETED").length}
+            </div>
+          </div>
+        </div>
 
         <div className="card">
           <h3>Task Filters</h3>
           <div className="status-row">
-            {(["PENDING", "IN_PROGRESS", "COMPLETED"] as TaskStatus[]).map(
-              (s) => (
-                <label className="status-item" key={s}>
-                  <input
-                    type="checkbox"
-                    checked={filter[s]}
-                    onChange={() =>
-                      setFilter((p) => ({ ...p, [s]: !p[s] }))
-                    }
-                  />
-                  {s.replace("_", " ")}
-                </label>
-              )
-            )}
+            {(["PENDING", "IN_PROGRESS", "COMPLETED"] as TaskStatus[]).map((s) => (
+              <label className="status-item" key={s}>
+                <input
+                  type="checkbox"
+                  checked={filter[s]}
+                  onChange={() => setFilter((p) => ({ ...p, [s]: !p[s] }))}
+                />
+                {s.replace("_", " ")}
+              </label>
+            ))}
           </div>
         </div>
 
@@ -288,12 +405,9 @@ export default function UserDashboard() {
                   {t.due_date && (
                     <div className="muted small">
                       📅 Due: {new Date(t.due_date).toLocaleDateString()}
-                      {new Date(t.due_date) < new Date() &&
-                        t.status !== "COMPLETED" && (
-                          <span style={{ color: "#ef4444", marginLeft: 8 }}>
-                            🔴 Overdue
-                          </span>
-                        )}
+                      {new Date(t.due_date) < new Date() && t.status !== "COMPLETED" && (
+                        <span style={{ color: "#ef4444", marginLeft: 8 }}>🔴 Overdue</span>
+                      )}
                     </div>
                   )}
 
@@ -308,15 +422,9 @@ export default function UserDashboard() {
                     <div style={{ marginTop: 8 }}>
                       <div style={{ fontWeight: 600 }}>Attachments</div>
                       {t.attachments.map((a) => (
-                        <div
-                          key={a.id}
-                          style={{ display: "flex", gap: 10, marginTop: 4 }}
-                        >
+                        <div key={a.id} style={{ display: "flex", gap: 10, marginTop: 4 }}>
                           <span className="muted small">{a.original_name}</span>
-                          <button
-                            className="btn"
-                            onClick={() => handleDownload(a.id, a.original_name)}
-                          >
+                          <button className="btn" onClick={() => handleDownload(a.id, a.original_name)}>
                             Download
                           </button>
                         </div>
@@ -333,16 +441,20 @@ export default function UserDashboard() {
                   />
                 </div>
 
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button className="btn" onClick={() => openEditModal(t)}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn" onClick={() => openViewModal(t)}>
+                    View
+                  </button>
+
+                  <button className="btn" onClick={() => openCommentModal(t)}>
+                    Add Comment
+                  </button>
+
+                  <button className="btn" onClick={() => openEditModal(t)} disabled={!t.can_edit_status}>
                     Edit
                   </button>
 
-                  <button
-                    className="btn danger"
-                    onClick={() => removeTask(t)}
-                    disabled={!t.can_delete}
-                  >
+                  <button className="btn danger" onClick={() => removeTask(t)} disabled={!t.can_delete}>
                     Delete
                   </button>
                 </div>
@@ -362,17 +474,13 @@ export default function UserDashboard() {
           <label>Title</label>
           <input
             value={taskForm.title}
-            onChange={(e) =>
-              setTaskForm((p) => ({ ...p, title: e.target.value }))
-            }
+            onChange={(e) => setTaskForm((p) => ({ ...p, title: e.target.value }))}
           />
 
           <label>Description</label>
           <textarea
             value={taskForm.description}
-            onChange={(e) =>
-              setTaskForm((p) => ({ ...p, description: e.target.value }))
-            }
+            onChange={(e) => setTaskForm((p) => ({ ...p, description: e.target.value }))}
           />
 
           <label>Status</label>
@@ -384,12 +492,7 @@ export default function UserDashboard() {
           <label>Priority</label>
           <select
             value={taskForm.priority}
-            onChange={(e) =>
-              setTaskForm((p) => ({
-                ...p,
-                priority: e.target.value as TaskPriority,
-              }))
-            }
+            onChange={(e) => setTaskForm((p) => ({ ...p, priority: e.target.value as TaskPriority }))}
           >
             <option value="LOW">Low</option>
             <option value="MEDIUM">Medium</option>
@@ -400,18 +503,26 @@ export default function UserDashboard() {
           <input
             type="date"
             value={taskForm.due_date || ""}
-            onChange={(e) =>
-              setTaskForm((p) => ({ ...p, due_date: e.target.value }))
-            }
+            onChange={(e) => setTaskForm((p) => ({ ...p, due_date: e.target.value }))}
           />
 
-          <label>Optional PDF</label>
+          <label>Optional Attachments (PDF / DOCX / Images)</label>
           <input
             type="file"
-            accept="application/pdf"
-            onChange={(e) => setTaskPdf(e.target.files?.[0] || null)}
+            multiple
+            accept=".pdf,.docx,image/*"
+            onChange={(e) => setTaskFiles(Array.from(e.target.files || []))}
           />
-          {taskPdf && <div className="muted small">Selected: {taskPdf.name}</div>}
+          {taskFiles.length > 0 && (
+            <div className="muted small">
+              Selected:
+              <ul style={{ marginTop: 6 }}>
+                {taskFiles.map((f, idx) => (
+                  <li key={idx}>{f.name}</li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <button className="btn primary" onClick={submitCreateTask}>
             Create
@@ -419,63 +530,87 @@ export default function UserDashboard() {
         </div>
       </Modal>
 
-      {/* EDIT MODAL */}
-      <Modal open={openEdit} title="Edit Task" onClose={() => setOpenEdit(false)}>
+      {/* VIEW / COMMENT / EDIT MODAL */}
+      <Modal
+        open={openEdit}
+        title={modalTitle}
+        onClose={() => {
+          setOpenEdit(false);
+          setEditTask(null);
+          setComments([]);
+        }}
+      >
         <div className="form">
-          <label>Title</label>
-          <input
-            value={editForm.title}
-            disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) =>
-              setEditForm((p) => ({ ...p, title: e.target.value }))
-            }
-          />
+          {/* fields hidden in COMMENT mode */}
+          {!isComment && (
+            <>
+              <label>Title</label>
+              <input
+                value={editForm.title}
+                disabled={!canEditContent}
+                onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
+              />
 
-          <label>Description</label>
-          <textarea
-            value={editForm.description}
-            disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) =>
-              setEditForm((p) => ({ ...p, description: e.target.value }))
-            }
-          />
+              <label>Description</label>
+              <textarea
+                value={editForm.description}
+                disabled={!canEditContent}
+                onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))}
+              />
 
-          <label>Status</label>
-          <StatusChips
-            value={editForm.status}
-            onChange={(s) => setEditForm((p) => ({ ...p, status: s }))}
-            disabled={!(editTask?.can_edit_status ?? false)}
-          />
+              <label>Status</label>
+              <StatusChips
+                value={editForm.status}
+                onChange={(s) => setEditForm((p) => ({ ...p, status: s }))}
+                disabled={!canEditStatus}
+              />
 
-          <label>Priority</label>
-          <select
-            value={editForm.priority}
-            disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) =>
-              setEditForm((p) => ({
-                ...p,
-                priority: e.target.value as TaskPriority,
-              }))
-            }
-          >
-            <option value="LOW">Low</option>
-            <option value="MEDIUM">Medium</option>
-            <option value="HIGH">High</option>
-          </select>
+              <label>Priority</label>
+              <select
+                value={editForm.priority}
+                disabled={!canEditContent}
+                onChange={(e) => setEditForm((p) => ({ ...p, priority: e.target.value as TaskPriority }))}
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+              </select>
 
-          <label>Due Date</label>
-          <input
-            type="date"
-            value={editForm.due_date || ""}
-            disabled={!(editTask?.can_edit_content ?? false)}
-            onChange={(e) =>
-              setEditForm((p) => ({ ...p, due_date: e.target.value }))
-            }
-          />
+              <label>Due Date</label>
+              <input
+                type="date"
+                value={editForm.due_date || ""}
+                disabled={!canEditContent}
+                onChange={(e) => setEditForm((p) => ({ ...p, due_date: e.target.value }))}
+              />
+            </>
+          )}
 
-          <button className="btn primary" onClick={submitEdit}>
-            Save
-          </button>
+          {commentsLoading ? (
+            <div className="muted">Loading comments...</div>
+          ) : (
+            <CommentsSection
+              comments={comments}
+              currentUserId={user?.id}
+              currentUserEmail={user?.email}
+              currentUserRole={user?.role}
+              onAdd={addCommentToCurrentTask}
+              onEdit={editCommentForCurrentTask}
+              onDelete={deleteCommentForCurrentTask}
+            />)}
+
+          {/* Save only in EDIT mode */}
+          {isEdit && (
+            <button className="btn primary" onClick={submitEdit} disabled={!canEditStatus}>
+              Save
+            </button>
+          )}
+
+          {isView && (
+            <div className="muted small" style={{ marginTop: 10 }}>
+              This is view-only.
+            </div>
+          )}
         </div>
       </Modal>
     </div>

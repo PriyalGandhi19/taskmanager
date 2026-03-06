@@ -1,23 +1,29 @@
 from backend.utils.db import fetch_one, fetch_all
 
-def create_notification(recipient_id: str, task_id: str | None, ntype: str, message: str) -> dict:
+def create_notification(recipient_id: str, task_id: str | None, ntype: str, message: str,  actor_id: str | None = None, ) -> dict:
     return fetch_one(
         """
-        INSERT INTO notifications(recipient_id, task_id, type, message)
-        VALUES (%s,%s,%s,%s)
+        INSERT INTO notifications(recipient_id, task_id, type, message, actor_id)
+        VALUES (%s,%s,%s,%s,%s)
         RETURNING id;
         """,
-        [recipient_id, task_id, ntype, message],
+        [recipient_id, task_id, ntype, message, actor_id],
     )
 
 def list_notifications_for_user(user_id: str, unread_only: bool = False, limit: int = 20) -> list[dict]:
     return fetch_all(
         """
-        SELECT id, recipient_id, task_id, type, message, is_read, created_at
-        FROM notifications
-        WHERE recipient_id = %s
-          AND (%s = FALSE OR is_read = FALSE)
-        ORDER BY created_at DESC
+        SELECT 
+            n.id, n.recipient_id, n.task_id, n.type, n.message, n.is_read, n.created_at,
+            t.title AS task_title,
+            n.actor_id,
+            u.email AS actor_email
+        FROM notifications n
+        LEFT JOIN tasks t ON t.id = n.task_id
+        LEFT JOIN users u ON u.id = n.actor_id
+        WHERE n.recipient_id = %s
+          AND (%s = FALSE OR n.is_read = FALSE)
+        ORDER BY n.created_at DESC
         LIMIT %s;
         """,
         [user_id, unread_only, limit],

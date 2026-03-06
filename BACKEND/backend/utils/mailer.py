@@ -69,9 +69,19 @@ def _smtp_send(msg: EmailMessage):
         server.login(settings.SMTP_USER, settings.SMTP_PASS)
         server.send_message(msg)
 
-
-
-def send_task_assigned_email(to_email: str, task_title: str, task_desc: str, task_status: str, pdf_path: str | None = None):
+def send_task_assigned_email(
+    to_email: str,
+    task_title: str,
+    task_desc: str,
+    task_status: str,
+    pdf_path: str | None = None,
+    attachments: list[dict] | None = None,
+):
+    """
+    Backward compatible:
+      - old code can still pass pdf_path (single file)
+      - new code can pass attachments=[{"path":..., "name":..., "content_type":...}, ...]
+    """
     subject = f"New Task Assigned: {task_title}"
 
     body = f"""
@@ -96,11 +106,57 @@ Task Manager
         to=[to_email],
     )
 
-    # Optional PDF attachment
-    if pdf_path:
-        email.attach_file(pdf_path)
+    # ✅ old single attachment support
+    if pdf_path and os.path.exists(pdf_path):
+        try:
+            email.attach_file(pdf_path)
+        except Exception:
+            pass
+
+    # ✅ new multi attachments support
+    for a in (attachments or []):
+        try:
+            path = a.get("path")
+            if not path or not os.path.exists(path):
+                continue
+            ctype = a.get("content_type") or None
+            # name is optional; attach_file uses original filename from path
+            email.attach_file(path, mimetype=ctype)
+        except Exception:
+            pass
 
     email.send(fail_silently=False)
+
+# def send_task_assigned_email(to_email: str, task_title: str, task_desc: str, task_status: str, pdf_path: str | None = None):
+#     subject = f"New Task Assigned: {task_title}"
+
+#     body = f"""
+# Hello,
+
+# You have been assigned a new task.
+
+# Title: {task_title}
+# Status: {task_status}
+
+# Description:
+# {task_desc}
+
+# Thanks,
+# Task Manager
+# """.strip()
+
+#     email = EmailMessage(
+#         subject=subject,
+#         body=body,
+#         from_email=settings.DEFAULT_FROM_EMAIL,
+#         to=[to_email],
+#     )
+
+#     # Optional PDF attachment
+#     if pdf_path:
+#         email.attach_file(pdf_path)
+
+#     email.send(fail_silently=False)
 
 def send_set_password_email(to_email: str, link: str, minutes: int):
     subject = "Set your password"
@@ -111,3 +167,22 @@ def send_set_password_email(to_email: str, link: str, minutes: int):
         "Thanks,\nTeam"
     )
     send_mail(subject, body, settings.DEFAULT_FROM_EMAIL, [to_email], fail_silently=False)
+
+def send_pdf_attachment_bytes(
+    to_email: str,
+    subject: str,
+    body: str,
+    filename: str,
+    pdf_bytes: bytes
+):
+    """
+    Sends an email with PDF attachment using in-memory bytes (no temp file).
+    """
+    email = EmailMessage(
+        subject=subject,
+        body=body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[to_email],
+    )
+    email.attach(filename, pdf_bytes, "application/pdf")
+    email.send(fail_silently=False)

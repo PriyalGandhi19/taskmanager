@@ -1,8 +1,10 @@
 import type { Dispatch, SetStateAction } from "react";
 import Modal from "../../components/Modal";
 import StatusChips from "../../components/StatusChips";
-import type { Task, TaskPriority, TaskStatus } from "../../api/tasks";
+import type { Task, TaskPriority, TaskStatus, TaskComment } from "../../api/tasks";
 import type { UserRow } from "./useAdminDashboard";
+import CommentsSection from "../../components/CommentsSection";
+import { useAuth } from "../../store/authStore";
 
 export function CreateUserModal({
   open,
@@ -55,8 +57,8 @@ export function CreateTaskModal({
   taskForm,
   setTaskForm,
   usersAB,
-  taskPdf,
-  setTaskPdf,
+  taskFiles,
+  setTaskFiles,
   onSubmit,
 }: {
   open: boolean;
@@ -83,8 +85,8 @@ export function CreateTaskModal({
   >;
 
   usersAB: UserRow[];
-  taskPdf: File | null;
-  setTaskPdf: (f: File | null) => void;
+  taskFiles: File[];
+ setTaskFiles: Dispatch<SetStateAction<File[]>>;
   onSubmit: () => Promise<void>;
 }) {
   const isValid =
@@ -156,13 +158,48 @@ export function CreateTaskModal({
           ))}
         </select>
 
-        <label>Optional PDF</label>
+        <label>Optional Attachments (PDF / DOCX / Images)</label>
         <input
           type="file"
-          accept="application/pdf"
-          onChange={(e) => setTaskPdf(e.target.files?.[0] || null)}
+          multiple
+          accept=".pdf,.docx,image/*"
+          onChange={(e) => {
+  const newFiles = Array.from(e.target.files || []);
+
+  setTaskFiles((prev) => {
+    const merged = [...prev, ...newFiles];
+
+    const unique = merged.filter(
+      (file, index, arr) =>
+        index === arr.findIndex((f) => f.name === file.name && f.size === file.size)
+    );
+
+    return unique.slice(0, 3);
+  });
+
+  e.target.value = "";
+}}
         />
-        {taskPdf && <div className="muted small">Selected: {taskPdf.name}</div>}
+
+        {taskFiles.length > 0 && (
+  <div className="muted small">
+    Selected:
+    <ul style={{ marginTop: 6 }}>
+      {taskFiles.map((f, idx) => (
+        <li key={`${f.name}-${idx}`} style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span>{f.name}</span>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setTaskFiles((prev) => prev.filter((_, i) => i !== idx))}
+          >
+            Remove
+          </button>
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
 
         <button className="btn primary" onClick={onSubmit} disabled={!isValid}>
           Create Task
@@ -180,13 +217,20 @@ export function CreateTaskModal({
 
 export function EditTaskModal({
   open,
+  mode,
   onClose,
   editTask,
   editForm,
   setEditForm,
   onSubmit,
+  comments,
+  commentsLoading,
+  onAddComment,
+  onEditComment,
+  onDeleteComment,
 }: {
   open: boolean;
+  mode: "VIEW" | "COMMENT" | "EDIT";
   onClose: () => void;
   editTask: Task | null;
 
@@ -209,66 +253,110 @@ export function EditTaskModal({
   >;
 
   onSubmit: () => Promise<void>;
+  comments: TaskComment[];
+  commentsLoading: boolean;
+  onAddComment: (text: string) => Promise<void>;
+  onEditComment: (commentId: string, text: string) => Promise<void>;
+  onDeleteComment: (commentId: string) => Promise<void>;
 }) {
-  const canEditContent = editTask?.can_edit_content ?? false;
-  const canEditStatus = editTask?.can_edit_status ?? false;
+  const { user } = useAuth();
+
+  const isView = mode === "VIEW";
+  const isComment = mode === "COMMENT";
+  const isEdit = mode === "EDIT";
+
+  const canEditContent = isEdit && (editTask?.can_edit_content ?? false);
+  const canEditStatus = isEdit && (editTask?.can_edit_status ?? false);
+
+  const title = isView ? "View Task" : isComment ? "Add Comment" : "Edit Task";
 
   return (
-    <Modal open={open} title="Edit Task" onClose={onClose}>
+    <Modal open={open} title={title} onClose={onClose}>
       <div className="form">
-        <label>Title</label>
-        <input
-          value={editForm.title}
-          disabled={!canEditContent}
-          onChange={(e) => setEditForm((p) => ({ ...p, title: e.target.value }))}
-        />
+        {!isComment && (
+          <>
+            <label>Title</label>
+            <input
+              value={editForm.title}
+              disabled={!canEditContent}
+              onChange={(e) =>
+                setEditForm((p) => ({ ...p, title: e.target.value }))
+              }
+            />
 
-        <label>Description</label>
-        <textarea
-          value={editForm.description}
-          disabled={!canEditContent}
-          onChange={(e) =>
-            setEditForm((p) => ({ ...p, description: e.target.value }))
-          }
-        />
+            <label>Description</label>
+            <textarea
+              value={editForm.description}
+              disabled={!canEditContent}
+              onChange={(e) =>
+                setEditForm((p) => ({ ...p, description: e.target.value }))
+              }
+            />
 
-        <label>Status</label>
-        <StatusChips
-          value={editForm.status}
-          disabled={!canEditStatus}
-          onChange={(s) => setEditForm((p) => ({ ...p, status: s }))}
-        />
+            <label>Status</label>
+            <StatusChips
+              value={editForm.status}
+              disabled={!canEditStatus}
+              onChange={(s) => setEditForm((p) => ({ ...p, status: s }))}
+            />
 
-        {/* ✅ Priority + Due date are "content", so lock them too if admin-created */}
-        <label>Priority</label>
-        <select
-          value={editForm.priority}
-          disabled={!canEditContent}
-          onChange={(e) =>
-            setEditForm((p) => ({
-              ...p,
-              priority: e.target.value as TaskPriority,
-            }))
-          }
-        >
-          <option value="LOW">Low</option>
-          <option value="MEDIUM">Medium</option>
-          <option value="HIGH">High</option>
-        </select>
+            <label>Priority</label>
+            <select
+              value={editForm.priority}
+              disabled={!canEditContent}
+              onChange={(e) =>
+                setEditForm((p) => ({
+                  ...p,
+                  priority: e.target.value as TaskPriority,
+                }))
+              }
+            >
+              <option value="LOW">Low</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="HIGH">High</option>
+            </select>
 
-        <label>Due Date</label>
-        <input
-          type="date"
-          value={editForm.due_date || ""}
-          disabled={!canEditContent}
-          onChange={(e) =>
-            setEditForm((p) => ({ ...p, due_date: e.target.value }))
-          }
-        />
+            <label>Due Date</label>
+            <input
+              type="date"
+              value={editForm.due_date || ""}
+              disabled={!canEditContent}
+              onChange={(e) =>
+                setEditForm((p) => ({ ...p, due_date: e.target.value }))
+              }
+            />
+          </>
+        )}
 
-        <button className="btn primary" onClick={onSubmit} disabled={!canEditStatus}>
-          Save Changes
-        </button>
+        {commentsLoading ? (
+          <div className="muted">Loading comments...</div>
+        ) : (
+          <CommentsSection
+              comments={comments}
+              currentUserId={user?.id}
+              currentUserEmail={user?.email}
+              currentUserRole={user?.role}
+              onAdd={onAddComment}
+            onEdit={onEditComment}
+            onDelete={onDeleteComment}
+            />
+        )}
+
+        {isEdit && (
+          <button
+            className="btn primary"
+            onClick={onSubmit}
+            disabled={!canEditStatus}
+          >
+            Save Changes
+          </button>
+        )}
+
+        {isView && (
+          <div className="muted small" style={{ marginTop: 10 }}>
+            This is view-only.
+          </div>
+        )}
       </div>
     </Modal>
   );
@@ -294,11 +382,7 @@ export function SendDocModal({
   onSubmit: () => Promise<void>;
 }) {
   return (
-    <Modal
-      open={open}
-      title="Send PDF via Email (max limit 10MB)"
-      onClose={onClose}
-    >
+    <Modal open={open} title="Send Document via Email (max 10MB)" onClose={onClose}>
       <div className="form">
         <label>To Email</label>
         <input
@@ -320,16 +404,16 @@ export function SendDocModal({
           onChange={(e) => setDocForm((p) => ({ ...p, body: e.target.value }))}
         />
 
-        <label>PDF File</label>
+        <label>Document (PDF / DOCX / Images)</label>
         <input
           type="file"
-          accept="application/pdf"
+          accept=".pdf,.docx,image/*"
           onChange={(e) => setDocFile(e.target.files?.[0] || null)}
         />
         {docFile && <div className="muted small">Selected: {docFile.name}</div>}
 
         <button className="btn primary" onClick={onSubmit}>
-          Send PDF
+          Send Document
         </button>
       </div>
     </Modal>

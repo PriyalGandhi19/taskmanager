@@ -12,12 +12,6 @@ export async function loginApi(email: string, password: string) {
   return res.data;
 }
 
-// export async function refreshApi(refreshToken: string) {
-//   const res = await api.post<ApiResp<{ access_token: string }>>("/api/auth/refresh", {
-//     refresh_token: refreshToken,
-//   });
-//   return res.data;
-// }
 
 export async function refreshApi(refreshToken: string) {
   const res = await api.post<ApiResp<{ access_token: string; refresh_token?: string }>>(
@@ -47,11 +41,6 @@ export async function resetPasswordApi(token: string, new_password: string) {
   return res.data;
 }
 
-
-// export async function verifyEmailApi(token: string) {
-//   const res = await api.post<ApiResp<{}>>("/api/auth/verify-email", { token });
-//   return res.data;
-// }
 
 export async function verifyEmailApi(token: string) {
   const res = await api.post<ApiResp<{ set_password_link?: string }>>(

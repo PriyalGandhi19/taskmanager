@@ -20,3 +20,75 @@ dist-ssr/
 .env
 BACKEND/.env
 frontend/.env
+
+# ===============================
+# ENV FILES
+# ===============================
+.env
+.env.*
+*.env
+
+# ===============================
+# PYTHON / DJANGO
+# ===============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Django stuff
+*.log
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# ===============================
+# NODE / REACT / VITE
+# ===============================
+node_modules/
+dist/
+build/
+
+# Vite
+.vite/
+
+# ===============================
+# TYPESCRIPT
+# ===============================
+*.tsbuildinfo
+
+# ===============================
+# OS FILES
+# ===============================
+.DS_Store
+Thumbs.db
+
+# ===============================
+# IDE FILES
+# ===============================
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ===============================
+# TEST / CACHE
+# ===============================
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# ===============================
+# MISC
+# ===============================
+*.pid
+*.seed
+*.out
+*.err

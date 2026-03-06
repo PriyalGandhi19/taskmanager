@@ -100,7 +100,14 @@ export default function NotificationBell() {
             items.map((n) => (
               <div key={n.id} style={{ padding: "8px 6px", borderTop: "1px solid rgba(255,255,255,0.08)" }}>
                 <div style={{ fontWeight: 700 }}>{n.type}</div>
-                <div className="muted small">{n.message}</div>
+                <div className="muted small">
+  {n.actor_email ? `${n.actor_email} — ` : ""}{n.message}
+  {n.task_title ? (
+    <span>
+      {" "}on <b style={{ color: "white" }}>{n.task_title}</b>
+    </span>
+  ) : null}
+</div>
                 <div className="muted small">{new Date(n.created_at).toLocaleString()}</div>
               </div>
             ))

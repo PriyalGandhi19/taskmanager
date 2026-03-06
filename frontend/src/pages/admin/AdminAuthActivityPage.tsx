@@ -51,8 +51,8 @@ export default function AdminAuthActivityPage() {
   const [from, setFrom] = useState<string>("");
   const [to, setTo] = useState<string>("");
 
-  // client-side quick search (within loaded rows only)
-  const [q, setQ] = useState<string>("");
+  // ❌ Removed: client-side quick search (within loaded rows only)
+  // const [q, setQ] = useState<string>("");
 
   const pageCount = useMemo(() => {
     const l = Math.max(1, limit || 1);
@@ -97,23 +97,8 @@ export default function AdminAuthActivityPage() {
     load();
   }, [load]);
 
-  const rows = useMemo(() => {
-    const query = q.trim().toLowerCase();
-    if (!query) return items;
-
-    return (items || []).filter((a) => {
-      const em = (a.email || "").toLowerCase();
-      const ev = (a.event || "").toLowerCase();
-      const ip = (a.ip || "").toLowerCase();
-      const ua = (a.user_agent || "").toLowerCase();
-      return (
-        em.includes(query) ||
-        ev.includes(query) ||
-        ip.includes(query) ||
-        ua.includes(query)
-      );
-    });
-  }, [items, q]);
+  // ✅ since quick search removed, rows = items
+  const rows = items;
 
   const downloadCsv = useCallback(async () => {
     setErr("");
@@ -171,7 +156,7 @@ export default function AdminAuthActivityPage() {
     setSuccess("");
     setFrom("");
     setTo("");
-    setQ("");
+    // ❌ removed: setQ("")
   };
 
   return (
@@ -192,7 +177,7 @@ export default function AdminAuthActivityPage() {
             <div>
               <h2 style={{ margin: 0 }}>Auth Activity</h2>
               <div className="muted small">
-                Login / Logout / Failed Login events
+                Login / Logout / Failed Login events / Session Timeout
               </div>
             </div>
           </div>
@@ -280,17 +265,11 @@ export default function AdminAuthActivityPage() {
                 onChange={(e) => onChangeTo(e.target.value)}
               />
 
-              <input
-                placeholder="Quick search (within loaded rows)"
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                style={{ minWidth: 280 }}
-              />
+              {/* ❌ Removed: Quick search (within loaded rows) */}
             </div>
 
             <div className="muted small">
-              Showing: <b>{rows.length}</b> of <b>{items.length}</b> (loaded) •
-              Total: <b>{total}</b>
+              Showing: <b>{items.length}</b> (loaded) • Total: <b>{total}</b>
             </div>
           </div>
 
@@ -305,11 +284,6 @@ export default function AdminAuthActivityPage() {
               Loading...
             </div>
           )}
-
-          <div className="muted small" style={{ marginTop: 8 }}>
-            Note: “Quick search” searches only within currently loaded results
-            (page data). Server filters are Email/Event/Success/Date/Limit.
-          </div>
         </div>
 
         {/* Pagination controls */}

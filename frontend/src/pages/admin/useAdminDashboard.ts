@@ -1,4 +1,3 @@
-// src/pages/admin/useAdminDashboard.ts
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createUser, listUsers, sendDocumentEmail } from "../../api/admin";
 import { getAuditLogs, type AuditLog } from "../../api/audit";
@@ -11,6 +10,11 @@ import {
   type Task,
   type TaskStatus,
   type TaskPriority,
+  getTaskComments,
+  addTaskComment,
+  updateTaskComment,
+  deleteTaskComment,
+  type TaskComment,
 } from "../../api/tasks";
 import { triggerDownload } from "../../utils/download";
 
@@ -57,16 +61,21 @@ export function useAdminDashboard() {
   const [openTask, setOpenTask] = useState(false);
   const [openDoc, setOpenDoc] = useState(false);
 
-  // Edit modal
+  // Shared modal (View/Comment/Edit)
   const [openEdit, setOpenEdit] = useState(false);
   const [editTask, setEditTask] = useState<Task | null>(null);
   const [editForm, setEditForm] = useState({
     title: "",
     description: "",
     status: "PENDING" as TaskStatus,
-    priority: "MEDIUM" as TaskPriority,   // ✅ add
-  due_date: "" as string,
+    priority: "MEDIUM" as TaskPriority,
+    due_date: "" as string,
   });
+  const [modalMode, setModalMode] = useState<"VIEW" | "COMMENT" | "EDIT">("VIEW");
+
+  // Comments
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentsLoading, setCommentsLoading] = useState(false);
 
   // Create user form
   const [newUser, setNewUser] = useState<{ email: string; role: "A" | "B" }>({
@@ -79,11 +88,13 @@ export function useAdminDashboard() {
     title: "",
     description: "",
     status: "PENDING" as TaskStatus,
-     priority: "MEDIUM" as TaskPriority,   // ✅ add
-  due_date: "" as string,
+    priority: "MEDIUM" as TaskPriority,
+    due_date: "" as string,
     owner_id: "",
   });
-  const [taskPdf, setTaskPdf] = useState<File | null>(null);
+
+  // ✅ multiple attachments
+  const [taskFiles, setTaskFiles] = useState<File[]>([]);
 
   // Task status filters
   const [filter, setFilter] = useState<Record<TaskStatus, boolean>>({
@@ -92,7 +103,7 @@ export function useAdminDashboard() {
     COMPLETED: true,
   });
 
-  // ✅ Search + owner filter + pagination
+  // Search + owner filter + pagination
   const [taskQuery, setTaskQuery] = useState("");
   const [ownerFilterId, setOwnerFilterId] = useState<string>("");
   const [pageSize, setPageSize] = useState<number>(10);
@@ -116,7 +127,10 @@ export function useAdminDashboard() {
   // =========================
   // DERIVED
   // =========================
-  const usersAB = useMemo(() => users.filter((u) => u.role === "A" || u.role === "B"), [users]);
+  const usersAB = useMemo(
+    () => users.filter((u) => u.role === "A" || u.role === "B"),
+    [users]
+  );
 
   const userEmailById = useMemo(() => {
     const m: Record<string, string> = {};
@@ -147,10 +161,10 @@ export function useAdminDashboard() {
     });
   }, [filteredTasks, taskQuery, ownerFilterId, userEmailById]);
 
-  const pageCount = useMemo(() => Math.max(1, Math.ceil(searchedTasks.length / pageSize)), [
-    searchedTasks.length,
-    pageSize,
-  ]);
+  const pageCount = useMemo(
+    () => Math.max(1, Math.ceil(searchedTasks.length / pageSize)),
+    [searchedTasks.length, pageSize]
+  );
 
   const currentPage = useMemo(() => clamp(page, 1, pageCount), [page, pageCount]);
 
@@ -165,22 +179,26 @@ export function useAdminDashboard() {
     setPage(1);
   }, [taskQuery, ownerFilterId, pageSize, filterKey]);
 
-  // KPI optimized
+  // KPI
   const { kpiTotal, kpiPending, kpiInProgress, kpiCompleted, completionRate } = useMemo(() => {
     let pending = 0,
       inProg = 0,
       done = 0;
-
     for (const t of tasks) {
       if (t.status === "PENDING") pending++;
       else if (t.status === "IN_PROGRESS") inProg++;
       else if (t.status === "COMPLETED") done++;
     }
-
     const total = tasks.length;
     const rate = total === 0 ? 0 : (done * 100) / total;
 
-    return { kpiTotal: total, kpiPending: pending, kpiInProgress: inProg, kpiCompleted: done, completionRate: rate };
+    return {
+      kpiTotal: total,
+      kpiPending: pending,
+      kpiInProgress: inProg,
+      kpiCompleted: done,
+      completionRate: rate,
+    };
   }, [tasks]);
 
   // =========================
@@ -238,7 +256,7 @@ export function useAdminDashboard() {
   };
 
   // =========================
-  // ACTIONS (same)
+  // ACTIONS
   // =========================
   const submitCreateUser = async () => {
     setErr("");
@@ -255,64 +273,153 @@ export function useAdminDashboard() {
     }
   };
 
- const submitCreateTask = async () => {
-  setErr("");
+  const submitCreateTask = async () => {
+    setErr("");
 
-  const title = taskForm.title.trim();
-  const description = taskForm.description.trim();
+    const title = taskForm.title.trim();
+    const description = taskForm.description.trim();
 
-  if (title.length < 3) {
-    setErr("Title must be at least 3 characters.");
-    return;
-  }
-  if (description.length < 5) {
-    setErr("Description must be at least 5 characters.");
-    return;
-  }
-  if (!taskForm.owner_id) {
-    setErr("Choose owner (A/B) for admin-created task.");
-    return;
-  }
+    if (title.length < 3) return setErr("Title must be at least 3 characters.");
+    if (description.length < 5) return setErr("Description must be at least 5 characters.");
+    if (!taskForm.owner_id) return setErr("Choose owner (A/B) for admin-created task.");
 
-  try {
-    const res = await createTask({ ...taskForm, title, description, file: taskPdf });
-    if (!res.success) throw new Error(res.message);
+    try {
+      const res = await createTask({ ...taskForm, title, description, files: taskFiles });
+      if (!res.success) throw new Error(res.message);
 
-    setOpenTask(false);
-    setTaskForm({ title: "", description: "", status: "PENDING", priority: "MEDIUM", due_date: "", owner_id: "" });
-    setTaskPdf(null);
-    await loadAll();
-  } catch (e: any) {
-    // ✅ backend validation message show
-    const data = e?.response?.data;
-    const backendMsg =
-      (typeof data === "string" ? data : "") ||
-      (Array.isArray(data?.title) ? data.title[0] : "") ||
-      (Array.isArray(data?.description) ? data.description[0] : "") ||
-      data?.message;
+      setOpenTask(false);
+      setTaskForm({
+        title: "",
+        description: "",
+        status: "PENDING",
+        priority: "MEDIUM",
+        due_date: "",
+        owner_id: "",
+      });
+      setTaskFiles([]);
+      await loadAll();
+    } catch (e: any) {
+      const data = e?.response?.data;
+      const backendMsg =
+        (typeof data === "string" ? data : "") ||
+        (Array.isArray(data?.title) ? data.title[0] : "") ||
+        (Array.isArray(data?.description) ? data.description[0] : "") ||
+        data?.message;
 
-    setErr(backendMsg || "Create task failed");
-  }
-};
+      setErr(backendMsg || "Create task failed");
+    }
+  };
 
   const quickStatus = async (task: Task, status: TaskStatus) => {
     setErr("");
     if (!task.can_edit_status) return setErr("You cannot change status of this task.");
     try {
-      await updateTask(task.id, { title: task.title, description: task.description, status , priority: (task.priority ?? "MEDIUM") as TaskPriority,
-  due_date: task.due_date ? String(task.due_date).slice(0, 10) : null, });
+      await updateTask(task.id, {
+        title: task.title,
+        description: task.description,
+        status,
+        priority: (task.priority ?? "MEDIUM") as TaskPriority,
+        due_date: task.due_date ? String(task.due_date).slice(0, 10) : null,
+      });
       await loadAll();
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Update failed");
     }
   };
 
-  const openEditModal = (t: Task) => {
+  // ✅ helper: load comments for a task
+  const loadCommentsForTask = async (taskId: string) => {
+    setComments([]);
+    setCommentsLoading(true);
+    try {
+      const res = await getTaskComments(taskId);
+      setComments(res.data?.comments || []);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || "Failed to load comments");
+    } finally {
+      setCommentsLoading(false);
+    }
+  };
+
+  const openViewModal = async (t: Task) => {
     setErr("");
     setEditTask(t);
-    setEditForm({ title: t.title, description: t.description, status: t.status ,  priority: (t.priority ?? "MEDIUM") as TaskPriority,
-  due_date: t.due_date ? String(t.due_date).slice(0, 10) : "", });
+    setEditForm({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: (t.priority ?? "MEDIUM") as TaskPriority,
+      due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
+    });
+
+    setModalMode("VIEW");
     setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
+  };
+
+  const openCommentModal = async (t: Task) => {
+    setErr("");
+    setEditTask(t);
+    setEditForm({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: (t.priority ?? "MEDIUM") as TaskPriority,
+      due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
+    });
+
+    setModalMode("COMMENT");
+    setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
+  };
+
+  const openEditModal = async (t: Task) => {
+    setErr("");
+    setEditTask(t);
+    setEditForm({
+      title: t.title,
+      description: t.description,
+      status: t.status,
+      priority: (t.priority ?? "MEDIUM") as TaskPriority,
+      due_date: t.due_date ? String(t.due_date).slice(0, 10) : "",
+    });
+
+    setModalMode("EDIT");
+    setOpenEdit(true);
+
+    await loadCommentsForTask(t.id);
+  };
+
+  const addCommentToCurrentTask = async (text: string) => {
+    if (!editTask) return;
+    try {
+      await addTaskComment(editTask.id, text);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to add comment");
+    }
+  };
+
+    const editCommentForCurrentTask = async (commentId: string, text: string) => {
+    if (!editTask) return;
+    try {
+      await updateTaskComment(commentId, text);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to update comment");
+    }
+  };
+
+  const deleteCommentForCurrentTask = async (commentId: string) => {
+    if (!editTask) return;
+    try {
+      await deleteTaskComment(commentId);
+      await loadCommentsForTask(editTask.id);
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "Failed to delete comment");
+    }
   };
 
   const submitEditTask = async () => {
@@ -321,13 +428,20 @@ export function useAdminDashboard() {
     if (!editTask.can_edit_status) return setErr("You cannot update this task.");
 
     const payload = editTask.can_edit_content
-      ? { ...editForm }
-      : { title: editTask.title, description: editTask.description, status: editForm.status, priority: editForm.priority, due_date: editForm.due_date };
+      ? { ...editForm, due_date: editForm.due_date || null }
+      : {
+          title: editTask.title,
+          description: editTask.description,
+          status: editForm.status,
+          priority: (editTask.priority ?? "MEDIUM") as TaskPriority,
+          due_date: editTask.due_date ? String(editTask.due_date).slice(0, 10) : null,
+        };
 
     try {
       await updateTask(editTask.id, payload);
       setOpenEdit(false);
       setEditTask(null);
+      setComments([]);
       await loadAll();
     } catch (e: any) {
       setErr(e?.response?.data?.message || "Edit failed");
@@ -348,8 +462,15 @@ export function useAdminDashboard() {
   const submitSendDoc = async () => {
     setErr("");
     if (!docForm.to_email.trim()) return setErr("To email is required.");
-    if (!docFile) return setErr("Please select a PDF file.");
-    if (!docFile.name.toLowerCase().endsWith(".pdf")) return setErr("Only PDF files are allowed.");
+    if (!docFile) return setErr("Please select a document file.");
+
+    const allowed = [".pdf", ".docx", ".png", ".jpg", ".jpeg", ".webp"];
+    const name = docFile.name.toLowerCase();
+    const ext = name.includes(".") ? name.substring(name.lastIndexOf(".")) : "";
+
+    if (!allowed.includes(ext)) {
+      return setErr("Allowed files: PDF, DOCX, PNG, JPG/JPEG, WEBP");
+    }
 
     try {
       const res = await sendDocumentEmail({
@@ -407,8 +528,8 @@ export function useAdminDashboard() {
     setNewUser,
     taskForm,
     setTaskForm,
-    taskPdf,
-    setTaskPdf,
+    taskFiles,
+    setTaskFiles,
     editTask,
     setEditTask,
     editForm,
@@ -417,6 +538,12 @@ export function useAdminDashboard() {
     setDocForm,
     docFile,
     setDocFile,
+
+    comments,
+    commentsLoading,
+    addCommentToCurrentTask,
+    editCommentForCurrentTask,
+    deleteCommentForCurrentTask,
 
     filter,
     setFilter,
@@ -427,7 +554,6 @@ export function useAdminDashboard() {
     logAction,
     setLogAction,
 
-    // ✅ NEW exports
     taskQuery,
     setTaskQuery,
     ownerFilterId,
@@ -441,7 +567,11 @@ export function useAdminDashboard() {
     loadAll,
     submitCreateUser,
     submitCreateTask,
+    openViewModal,
+    openCommentModal,
     openEditModal,
+    modalMode,
+    setModalMode,
     submitEditTask,
     removeTask,
     quickStatus,
