@@ -92,3 +92,4 @@ htmlcov/
 *.seed
 *.out
 *.err
+*.exe
