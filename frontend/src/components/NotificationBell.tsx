@@ -14,8 +14,14 @@ export default function NotificationBell() {
     }
   };
 
-  useEffect(() => {
+    useEffect(() => {
     load();
+
+    const id = window.setInterval(() => {
+      load();
+    }, 10000); // every 10 sec
+
+    return () => window.clearInterval(id);
   }, []);
 
   const unreadCount = items.length;

@@ -8,7 +8,10 @@ import axios, { AxiosError } from "axios";
 
 import { authStorage } from "../store/authStorage";
 
-const baseURL = import.meta.env.VITE_API_BASE_URL;
+// const baseURL = import.meta.env.VITE_API_BASE_URL;
+
+
+const baseURL = import.meta.env.VITE_API_BASE_URL || "";
 
 // ============================
 // MODE SWITCH
@@ -25,7 +28,7 @@ export const USE_JWT = false;
 export const api = axios.create({
   baseURL,
   headers: { "Content-Type": "application/json" },
-  withCredentials: true, // ✅ required for Django session cookies
+  withCredentials: true,
 });
 
 /* ============================
@@ -40,7 +43,7 @@ api.interceptors.request.use((config) => {
       (config.headers as any).Authorization = `Bearer ${token}`;
     }
   } else {
-    // ✅ SESSION MODE: NEVER send Bearer token
+    // SESSION MODE: never send Bearer token
     if ((config.headers as any).Authorization) {
       delete (config.headers as any).Authorization;
     }
@@ -50,19 +53,29 @@ api.interceptors.request.use((config) => {
 });
 
 /* ============================
-   SESSION EXPIRED (emit once)
+   SESSION EXPIRED STATE
 ============================ */
 let sessionExpiredEmitted = false;
+
+export function clearSessionExpiredFlag() {
+  sessionExpiredEmitted = false;
+  localStorage.removeItem("SESSION_EXPIRED");
+  sessionStorage.removeItem("LOGIN_REASON");
+  window.dispatchEvent(new Event("SESSION_EXPIRED_EVENT"));
+}
 
 /* ============================
    RESPONSE INTERCEPTOR
 ============================ */
 api.interceptors.response.use(
   (response) => {
-    // ✅ LOGIN SUCCESS → clear expire flag
-    if (response.config.url?.includes("/api/auth/login")) {
-      sessionExpiredEmitted = false;
-      localStorage.removeItem("SESSION_EXPIRED");
+    // login / google login / reauth success => unlock app
+    if (
+      response.config.url?.includes("/api/auth/login") ||
+      response.config.url?.includes("/api/auth/google") ||
+      response.config.url?.includes("/api/auth/reauth")
+    ) {
+      clearSessionExpiredFlag();
     }
 
     return response;
@@ -70,35 +83,47 @@ api.interceptors.response.use(
 
   async (error: AxiosError<any>) => {
     // ============================
-    // ✅ SESSION MODE (cookie)
+    // SESSION MODE (cookie)
     // ============================
-    if (
-      !USE_JWT &&
-      (error.response?.status === 401 ||
-        error.response?.status === 403)
-    ) {
-      if (!sessionExpiredEmitted) {
-        sessionExpiredEmitted = true;
+    if (!USE_JWT) {
+      const status = error.response?.status;
+      const code = error.response?.data?.errors?.code;
+      const url = error.config?.url || "";
 
-        // ✅ set global expired flag
-        localStorage.setItem("SESSION_EXPIRED", "1");
+      const isAuthEndpoint =
+        url.includes("/api/auth/login") ||
+        url.includes("/api/auth/google") ||
+        url.includes("/api/auth/refresh") ||
+        url.includes("/api/auth/logout") ||
+        url.includes("/api/auth/reauth");
 
-        // optional reason (if login page wants to read it)
-        sessionStorage.setItem("LOGIN_REASON", "expired");
+      const isExpired =
+        !isAuthEndpoint &&
+        (code === "SESSION_EXPIRED" || status === 401);
 
-        // clear stored auth (tokens/user)
-        authStorage.clearAll();
+      if (isExpired) {
+        if (!sessionExpiredEmitted) {
+          sessionExpiredEmitted = true;
 
-        // ✅ trigger instant same-tab banner update
-        window.dispatchEvent(new Event("SESSION_EXPIRED_EVENT"));
+          // mark app as locked
+          localStorage.setItem("SESSION_EXPIRED", "1");
+          sessionStorage.setItem("LOGIN_REASON", "expired");
+
+          // IMPORTANT:
+          // do NOT clear authStorage here
+          // user/email needed for re-auth + logout flow
+          window.dispatchEvent(new Event("SESSION_EXPIRED_EVENT"));
+        }
+
+        return Promise.reject(error);
       }
 
       return Promise.reject(error);
     }
 
     // ==========================================================
-    // 🔁 JWT MODE (OPTIONAL) - FULL REFRESH FLOW
-    // Uncomment everything below when USE_JWT = true
+    // JWT MODE (OPTIONAL) - FULL REFRESH FLOW
+    // Uncomment and use only when USE_JWT = true
     // ==========================================================
 
     /*

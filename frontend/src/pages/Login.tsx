@@ -34,6 +34,9 @@ export default function Login() {
                 return;
               }
               setAuth(res.data.user, res.data.access_token, res.data.refresh_token);
+              localStorage.removeItem("SESSION_EXPIRED");
+sessionStorage.removeItem("LOGIN_REASON");
+window.dispatchEvent(new Event("SESSION_EXPIRED_EVENT"));
               nav(res.data.user.role === "ADMIN" ? "/admin" : "/me");
             } catch (e: any) {
               setServerError(e?.response?.data?.message || "Login failed");
@@ -84,6 +87,18 @@ export default function Login() {
                 <Link to="/forgot-password" className="forgot-link">
                   Forgot password?
                 </Link>
+              </div>
+              <div className="muted small">login credentials<br/> 
+               -----------------------------------------------------------------------------------------------<br/>
+              ADMIN DASHBOARD <br/>
+                email -- admin@demo.com <br/>
+                password -- Admin@1234 <br/>
+              ------------------------------------------------------------------------------------------------<br/>
+                USER DASHBOARD <br/>
+                email -- priyal.glsbca21@gmail.com<br/>
+                password -- 12345678 <br/>
+
+
               </div>
             </Form>
           )}

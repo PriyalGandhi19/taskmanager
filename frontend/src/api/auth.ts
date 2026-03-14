@@ -57,3 +57,11 @@ export async function googleLoginApi(idToken: string) {
   );
   return res.data;
 }
+
+export async function reauthApi(email: string, password: string) {
+  const res = await api.post<ApiResp<{ access_token: string; refresh_token: string; user: User }>>(
+    "/api/auth/reauth",
+    { email, password }
+  );
+  return res.data;
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createUser, listUsers, sendDocumentEmail } from "../../api/admin";
+import { createUser, listUsers, sendDocumentEmail, updateUserStatus } from "../../api/admin";
 import { getAuditLogs, type AuditLog } from "../../api/audit";
 import {
   createTask,
@@ -18,7 +18,14 @@ import {
 } from "../../api/tasks";
 import { triggerDownload } from "../../utils/download";
 
-export type UserRow = { id: string; email: string; role: "A" | "B" | "ADMIN" };
+//export type UserRow = { id: string; email: string; role: "A" | "B" | "ADMIN" };
+
+export type UserRow = {
+  id: string;
+  email: string;
+  role: "A" | "B" | "ADMIN";
+  is_active?: boolean;
+};
 
 function safeParsePayload(payload: any): any {
   if (!payload) return null;
@@ -272,6 +279,19 @@ export function useAdminDashboard() {
       setErr(e?.response?.data?.message || e?.message || "Create user failed");
     }
   };
+
+  const changeUserActiveStatus = async (userId: string, isActive: boolean) => {
+    setErr("");
+
+    try {
+      const res = await updateUserStatus(userId, isActive);
+      if (!res?.success) throw new Error(res?.message || "User status update failed");
+      await loadAll();
+    } catch (e: any) {
+      setErr(e?.response?.data?.message || e?.message || "User status update failed");
+    }
+  };
+
 
   const submitCreateTask = async () => {
     setErr("");
@@ -566,6 +586,7 @@ export function useAdminDashboard() {
 
     loadAll,
     submitCreateUser,
+    changeUserActiveStatus,
     submitCreateTask,
     openViewModal,
     openCommentModal,

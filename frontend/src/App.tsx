@@ -19,6 +19,9 @@ const AdminDashboardPage = lazy(() => import("./pages/admin/AdminDashboardPage")
 const AdminAuditPage = lazy(() => import("./pages/admin/AdminAuditPage"));
 const UserDashboard = lazy(() => import("./pages/UserDashboard"));
 
+const ProfilePage = lazy(() => import("./pages/ProfilePage"));
+
+
 export default function App() {
   const { user } = useAuth();
 
@@ -45,6 +48,15 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+<Route
+  path="/profile"
+  element={
+    <ProtectedRoute roles={["ADMIN", "A", "B"]}>
+      <ProfilePage />
+    </ProtectedRoute>
+  }
+/>
 
         <Route
           path="/admin/audit"

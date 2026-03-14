@@ -292,17 +292,6 @@ npm install
 npm run dev
 ```
 
----
-
-# Future Improvements
-
-* WebSocket real-time notifications
-* Drag and drop task board
-* Docker deployment
-* Unit testing
-* Activity timeline UI
-
----
 
 # License
 

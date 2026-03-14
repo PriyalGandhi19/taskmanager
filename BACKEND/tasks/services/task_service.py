@@ -12,7 +12,10 @@ from tasks.repositories.task_repo import (
     update_task as repo_update_task,
     delete_task as repo_delete_task,
     get_admin_ids,
+    should_notify_inapp,
+    get_admin_ids_inapp_enabled,
 )
+
 from tasks.repositories.attachment_repo import insert_attachment, get_attachment_with_owner
 from tasks.repositories.notification_repo import create_notification
 
@@ -118,16 +121,30 @@ def create_task(actor_id: str, actor_role: str, data: dict, uploaded_files=None)
         )
 
     # 🔔 notification
+    # try:
+    #     create_notification(
+    #         recipient_id=final_owner_id,
+    #         task_id=task_id,
+    #         ntype="ASSIGNED",
+    #         message=f"New task assigned: {title}",
+    #         actor_id=actor_id,
+    #     )
+    # except Exception:
+        # pass
+        
+            # 🔔 notification only if recipient enabled in-app notifications
     try:
-        create_notification(
-            recipient_id=final_owner_id,
-            task_id=task_id,
-            ntype="ASSIGNED",
-            message=f"New task assigned: {title}",
-            actor_id=actor_id,
-        )
+        if should_notify_inapp(final_owner_id):
+            create_notification(
+                recipient_id=final_owner_id,
+                task_id=task_id,
+                ntype="ASSIGNED",
+                message=f"New task assigned: {title}",
+                actor_id=actor_id,
+            )
     except Exception:
         pass
+    
 
     # ✅ Email with attachments (protect size)
     if owner_row and owner_row.get("email"):
@@ -166,7 +183,6 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
     if not current:
         raise LookupError("Task not found")
 
-    # defaults
     title = data.get("title", current["title"])
     description = data.get("description", current["description"])
     status = data.get("status", current["status"])
@@ -174,7 +190,6 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
     priority = data.get("priority", current.get("priority", "MEDIUM"))
 
     status = (status or "").strip().upper()
-
     before_status = (current.get("status") or "").strip().upper()
 
     acl = get_task_acl(task_id)
@@ -183,7 +198,6 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
 
     owner_id = str(acl["owner_id"])
 
-    # ✅ update DB first
     try:
         repo_update_task(actor_id, task_id, title, description, status, due_date, priority)
     except Exception as ex:
@@ -194,12 +208,12 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
             raise LookupError("Task not found")
         raise ValueError(msg)
 
-    # ✅ NOW notifications (indentation fixed)
+    # 🔔 notifications after successful update
     if status and status != before_status:
         try:
             if actor_role == "ADMIN":
-                # Admin changed -> notify owner
-                if owner_id != str(actor_id):
+                # Admin changed -> notify owner only if enabled
+                if owner_id != str(actor_id) and should_notify_inapp(owner_id):
                     create_notification(
                         recipient_id=owner_id,
                         task_id=task_id,
@@ -208,8 +222,8 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
                         actor_id=actor_id,
                     )
             else:
-                # User changed -> notify all admins
-                admin_ids = get_admin_ids()
+                # User changed -> notify only admins who enabled in-app notifications
+                admin_ids = get_admin_ids_inapp_enabled()
                 for aid in admin_ids:
                     if aid == str(actor_id):
                         continue
@@ -222,6 +236,70 @@ def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> Non
                     )
         except Exception:
             pass
+
+
+# def update_task(actor_id: str, actor_role: str, task_id: str, data: dict) -> None:
+#     current = get_task_basic(task_id)
+#     if not current:
+#         raise LookupError("Task not found")
+
+#     # defaults
+#     title = data.get("title", current["title"])
+#     description = data.get("description", current["description"])
+#     status = data.get("status", current["status"])
+#     due_date = data.get("due_date", current.get("due_date"))
+#     priority = data.get("priority", current.get("priority", "MEDIUM"))
+
+#     status = (status or "").strip().upper()
+
+#     before_status = (current.get("status") or "").strip().upper()
+
+#     acl = get_task_acl(task_id)
+#     if not acl:
+#         raise LookupError("Task not found")
+
+#     owner_id = str(acl["owner_id"])
+
+#     # ✅ update DB first
+#     try:
+#         repo_update_task(actor_id, task_id, title, description, status, due_date, priority)
+#     except Exception as ex:
+#         msg = str(ex)
+#         if "Forbidden" in msg:
+#             raise PermissionError("Forbidden")
+#         if "Task not found" in msg:
+#             raise LookupError("Task not found")
+#         raise ValueError(msg)
+
+    # ✅ NOW notifications (indentation fixed)
+    # if status and status != before_status:
+    #     try:
+    #         if actor_role == "ADMIN":
+    #             # Admin changed -> notify owner
+    #             if owner_id != str(actor_id):
+    #                 create_notification(
+    #                     recipient_id=owner_id,
+    #                     task_id=task_id,
+    #                     ntype="STATUS",
+    #                     message=f"Task status changed: {before_status} -> {status}",
+    #                     actor_id=actor_id,
+    #                 )
+    #         else:
+    #             # User changed -> notify all admins
+    #             admin_ids = get_admin_ids()
+    #             for aid in admin_ids:
+    #                 if aid == str(actor_id):
+    #                     continue
+    #                 create_notification(
+    #                     recipient_id=aid,
+    #                     task_id=task_id,
+    #                     ntype="STATUS",
+    #                     message=f"User changed task status: {before_status} -> {status}",
+    #                     actor_id=actor_id,
+    #                 )
+    #     except Exception:
+    #         pass
+    
 
 
 def delete_task(actor_id: str, task_id: str) -> None:

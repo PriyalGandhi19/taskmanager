@@ -31,7 +31,7 @@ def create_task_returning_id(
     due_date,          # datetime or None
     priority: str,     # LOW|MEDIUM|HIGH
 ):
-    # ✅ updated fn signature: 7 params
+   
     return fetch_one(
         "SELECT fn_create_task(%s,%s,%s,%s,%s,%s,%s) AS id;",
         [actor_id, title, description, status, owner_id, due_date, priority],
@@ -61,4 +61,33 @@ def get_task_summary_for_user(user_id: str) -> dict:
 
 def get_admin_ids():
     rows = fetch_all("SELECT id FROM users WHERE role = 'ADMIN'")
+    return [str(r["id"]) for r in rows]
+
+
+def get_user_notify_prefs(user_id: str) -> dict | None:
+    return fetch_one(
+        """
+        SELECT notify_email, notify_inapp
+        FROM users
+        WHERE id = %s;
+        """,
+        [user_id],
+    )
+
+
+def should_notify_inapp(user_id: str) -> bool:
+    row = get_user_notify_prefs(user_id)
+    if not row:
+        return False
+    return bool(row.get("notify_inapp"))
+
+
+def get_admin_ids_inapp_enabled():
+    rows = fetch_all(
+        """
+        SELECT id
+        FROM users
+        WHERE role = 'ADMIN' AND notify_inapp = TRUE;
+        """
+    )
     return [str(r["id"]) for r in rows]

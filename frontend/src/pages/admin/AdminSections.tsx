@@ -77,22 +77,60 @@ export function AdminChartsSection({
   );
 }
 
+// export function UsersSection({
+//   usersAB,
+//   loading,
+//   shortId,
+// }: {
+//   usersAB: UserRow[];
+//   loading: boolean;
+//   shortId: (id?: string | null) => string;
+// }) {
+//   return (
+//     <div className="card">
+//       <h3>Users (A/B)</h3>
+//       <div className="table">
+//         <div className="tr head">
+//           <div>Email</div>
+//           <div>Role</div>
+//           <div></div>
+//         </div>
+
+//         {usersAB.map((u) => (
+//           <div className="tr" key={u.id}>
+//             <div>{u.email}</div>
+//             <div>{u.role}</div>
+//             <div className="muted small">{shortId(u.id)}</div>
+//           </div>
+//         ))}
+
+//         {!loading && usersAB.length === 0 && <div className="muted">No users yet.</div>}
+//       </div>
+//     </div>
+//   );
+// }
+
 export function UsersSection({
   usersAB,
   loading,
   shortId,
+  onToggleStatus,
 }: {
   usersAB: UserRow[];
   loading: boolean;
   shortId: (id?: string | null) => string;
+  onToggleStatus: (userId: string, isActive: boolean) => Promise<void>;
 }) {
   return (
     <div className="card">
       <h3>Users (A/B)</h3>
+
       <div className="table">
         <div className="tr head">
           <div>Email</div>
           <div>Role</div>
+          <div>Status</div>
+          <div>Action</div>
           <div></div>
         </div>
 
@@ -100,6 +138,28 @@ export function UsersSection({
           <div className="tr" key={u.id}>
             <div>{u.email}</div>
             <div>{u.role}</div>
+            <div>
+              <span className={u.is_active ? "badge ok" : "badge danger"}>
+                {u.is_active ? "Active" : "Inactive"}
+              </span>
+            </div>
+            <div>
+              {u.is_active ? (
+                <button
+                  className="btn danger"
+                  onClick={() => onToggleStatus(u.id, false)}
+                >
+                  Deactivate
+                </button>
+              ) : (
+                <button
+                  className="btn primary"
+                  onClick={() => onToggleStatus(u.id, true)}
+                >
+                  Activate
+                </button>
+              )}
+            </div>
             <div className="muted small">{shortId(u.id)}</div>
           </div>
         ))}
@@ -109,6 +169,8 @@ export function UsersSection({
     </div>
   );
 }
+
+
 
 export function TasksSection({
   tasks,

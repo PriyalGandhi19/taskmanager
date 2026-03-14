@@ -1,4 +1,9 @@
-from tasks.repositories.task_repo import get_task_acl, get_admin_ids
+from tasks.repositories.task_repo import (
+    get_task_acl,
+    get_admin_ids,
+    should_notify_inapp,
+    get_admin_ids_inapp_enabled,
+)
 from tasks.repositories.comment_repo import insert_comment, get_comment, update_comment , delete_comment
 from tasks.repositories.notification_repo import create_notification
 
@@ -27,17 +32,19 @@ def add_comment(actor_id: str, actor_role: str, task_id: str, content: str) -> d
     # 🔔 RULES:
     # Admin comment -> notify owner
     # User comment  -> notify all admins
+    
     try:
         if actor_role == "ADMIN":
-            if owner_id != str(actor_id):
+            if owner_id != str(actor_id) and should_notify_inapp(owner_id):
                 create_notification(
                     recipient_id=owner_id,
                     task_id=task_id,
                     ntype="COMMENT",
                     message="Admin commented on your task",
+                    actor_id=actor_id,
                 )
         else:
-            admin_ids = get_admin_ids()
+            admin_ids = get_admin_ids_inapp_enabled()
             for aid in admin_ids:
                 if aid == str(actor_id):
                     continue
@@ -46,9 +53,32 @@ def add_comment(actor_id: str, actor_role: str, task_id: str, content: str) -> d
                     task_id=task_id,
                     ntype="COMMENT",
                     message="User commented on a task",
+                    actor_id=actor_id,
                 )
     except Exception:
         pass
+    # try:
+    #     if actor_role == "ADMIN":
+    #         if owner_id != str(actor_id):
+    #             create_notification(
+    #                 recipient_id=owner_id,
+    #                 task_id=task_id,
+    #                 ntype="COMMENT",
+    #                 message="Admin commented on your task",
+    #             )
+    #     else:
+    #         admin_ids = get_admin_ids()
+    #         for aid in admin_ids:
+    #             if aid == str(actor_id):
+    #                 continue
+    #             create_notification(
+    #                 recipient_id=aid,
+    #                 task_id=task_id,
+    #                 ntype="COMMENT",
+    #                 message="User commented on a task",
+    #             )
+    # except Exception:
+    #     pass
 
     return {"comment_id": comment_id}
 

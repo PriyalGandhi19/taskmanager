@@ -154,3 +154,28 @@ def set_password(token: str, new_password: str) -> None:
     set_user_password(str(row["user_id"]), new_hash, must_set_password=False)
 
     mark_set_password_token_used(str(row["id"]))
+    
+def reauthenticate(email: str, password: str) -> dict:    
+    row = get_user_for_login(email)
+
+    if not row or not row["is_active"]:
+        raise PermissionError("Invalid email or password")
+
+    if not row["email_verified"]:
+        raise PermissionError("Please verify your email before logging in.")
+
+    if row["must_set_password"]:
+        raise PermissionError("Please set your password first.")
+
+    if not verify_password(password, row["password_hash"]):
+        raise PermissionError("Invalid email or password")
+
+    access = make_access_token(str(row["id"]), row["role"], row["email"])
+
+    refresh = make_refresh_token()
+    refresh_sha = sha256_hex(refresh)
+    exp = refresh_expiry()
+
+    insert_refresh_token(str(row["id"]), refresh_sha, exp)
+
+    return login(email, password)

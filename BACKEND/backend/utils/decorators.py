@@ -4,21 +4,14 @@ from django.utils import timezone
 from rest_framework.request import Request
 
 from backend.utils.responses import fail
-
-# =========================
-# OPTIONAL JWT IMPORTS
-# (Uncomment if you enable JWT fallback)
-# =========================
-# from backend.utils.jwt_utils import decode_access_token
-
 from authapp.repositories.session_repo import get_session, touch_session, revoke_session
 from authapp.repositories.auth_activity_repo import insert_auth_activity
 
 # =========================
 # CONFIG
 # =========================
-IDLE_SECONDS = 15 * 60  
-#IDLE_SECONDS = 30 
+IDLE_SECONDS = 15 * 60
+# IDLE_SECONDS = 10
 
 COOKIE_NAME = "tm_session"
 COOKIE_MAX_AGE = 900  # 15 min sliding cookie expiry
@@ -32,14 +25,29 @@ def _get_ip(request):
         return xff.split(",")[0].strip()
     return request.META.get("REMOTE_ADDR")
 
+
 def _get_ua(request):
     return request.META.get("HTTP_USER_AGENT")
+
 
 def _fail_and_clear_cookie(message: str, status: int = 401):
     """
     Always clear cookie on auth failures so browser doesn't keep sending dead sid.
     """
     resp = fail(message, status=status)
+    try:
+        resp.delete_cookie(COOKIE_NAME)
+    except Exception:
+        pass
+    return resp
+
+
+def _fail_with_code(message: str, code: str, status: int = 401):
+    """
+    Same as _fail_and_clear_cookie, but also returns a machine-readable code
+    so frontend can detect session-expiry reliably.
+    """
+    resp = fail(message, status=status, errors={"code": code})
     try:
         resp.delete_cookie(COOKIE_NAME)
     except Exception:
@@ -55,15 +63,14 @@ def require_auth(roles: Iterable[str] | None = None):
         def wrapper(viewself, request: Request, *args, **kwargs):
 
             # ==========================================================
-            # ✅ 1) COOKIE SESSION AUTH (RECOMMENDED FOR IDLE TIMEOUT)
+            # 1) COOKIE SESSION AUTH
             # ==========================================================
             sid = request.COOKIES.get(COOKIE_NAME)
             if sid:
                 s = get_session(sid)
 
-                # session missing/revoked => 401 + clear cookie
+                # session missing/revoked
                 if not s or s.get("revoked"):
-                    # (optional) if s exists, log invalid session event
                     if s:
                         try:
                             insert_auth_activity(
@@ -77,7 +84,11 @@ def require_auth(roles: Iterable[str] | None = None):
                         except Exception:
                             pass
 
-                    return _fail_and_clear_cookie("Session expired", status=401)
+                    return _fail_with_code(
+                        "Session expired",
+                        "SESSION_EXPIRED",
+                        status=401,
+                    )
 
                 now = timezone.now()
                 last_seen = s["last_seen_at"]
@@ -86,13 +97,10 @@ def require_auth(roles: Iterable[str] | None = None):
                 if (now - last_seen).total_seconds() > IDLE_SECONDS:
                     revoke_session(sid)
 
-                    # log timeout
                     try:
                         insert_auth_activity(
                             user_id=s["user_id"],
-                            email=s
-                            
-                            ["email"],
+                            email=s["email"],
                             event="SESSION_TIMEOUT",
                             ip=_get_ip(request),
                             user_agent=_get_ua(request),
@@ -101,10 +109,13 @@ def require_auth(roles: Iterable[str] | None = None):
                     except Exception:
                         pass
 
-                    return _fail_and_clear_cookie("Session timed out (inactivity)", status=401)
+                    return _fail_with_code(
+                        "Session timed out (inactivity)",
+                        "SESSION_EXPIRED",
+                        status=401,
+                    )
 
-                # touch only when "real user action" header is present
-                # (so background polling GET does NOT keep session alive)
+                # only real user activity should refresh session
                 is_user_active = request.headers.get("X-USER-ACTIVE") == "1"
                 if is_user_active:
                     touch_session(sid)
@@ -112,7 +123,11 @@ def require_auth(roles: Iterable[str] | None = None):
                 if roles_set and s["role"] not in roles_set:
                     return fail("Forbidden", status=403)
 
-                request.user_ctx = {"id": s["user_id"], "role": s["role"], "email": s["email"]}
+                request.user_ctx = {
+                    "id": s["user_id"],
+                    "role": s["role"],
+                    "email": s["email"],
+                }
 
                 resp = fn(viewself, request, *args, **kwargs)
 
@@ -123,13 +138,22 @@ def require_auth(roles: Iterable[str] | None = None):
                         sid,
                         httponly=True,
                         samesite="Lax",
-                        secure=False,   # HTTPS required for SameSite=None
+                        secure=False,
                         max_age=COOKIE_MAX_AGE,
                     )
                 except Exception:
                     pass
 
                 return resp
+
+            # ==========================================================
+            # If no valid cookie session
+            # ==========================================================
+            return _fail_and_clear_cookie("Unauthorized", status=401)
+
+        return wrapper
+
+    return decorator
 
             # ==========================================================
             # 🔁 2) JWT FALLBACK (OPTIONAL)
@@ -163,7 +187,4 @@ def require_auth(roles: Iterable[str] | None = None):
             # ==========================================================
             # If you are NOT using JWT fallback, keep this:
             # ==========================================================
-            return _fail_and_clear_cookie("Unauthorized", status=401)
-
-        return wrapper
-    return decorator
+            

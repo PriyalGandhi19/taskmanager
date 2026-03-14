@@ -753,3 +753,31 @@ ALTER TABLE notifications
 ADD COLUMN IF NOT EXISTS actor_id UUID NULL REFERENCES users(id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS idx_notifications_actor ON notifications(actor_id);
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS full_name TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS phone TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS bio TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS notify_email BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS notify_inapp BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE notifications
+DROP CONSTRAINT notifications_type_check;
+
+ALTER TABLE notifications
+ADD CONSTRAINT notifications_type_check
+CHECK (type = ANY (ARRAY[
+  'ASSIGNED'::text,
+  'STATUS'::text,
+  'DEADLINE'::text,
+  'COMMENT'::text,
+  'PROFILE'::text
+]));
